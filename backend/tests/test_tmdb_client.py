@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from backend.app import tmdb_client
 

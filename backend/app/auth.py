@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import hmac
 import secrets
 import sqlite3
@@ -50,11 +50,11 @@ def login_lock_seconds(failed_attempts: int) -> int:
 
 def get_current_user(authorization: str | None = Header(default=None)) -> sqlite3.Row:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Falta autenticaciÃ³n.")
+        raise HTTPException(status_code=401, detail="Falta autenticación.")
 
     token = authorization.removeprefix("Bearer ").strip()
     user = db.get_user_by_token(token)
     if user is None:
-        raise HTTPException(status_code=401, detail="SesiÃ³n invÃ¡lida o expirada.")
+        raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
 
     return user

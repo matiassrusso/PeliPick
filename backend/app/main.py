@@ -1,4 +1,4 @@
-﻿import sqlite3
+import sqlite3
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +16,7 @@ from .models import (
 )
 from .recommender import recommend
 
-MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB â€” real Letterboxd exports run in the tens of KB
+MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB — real Letterboxd exports run in the tens of KB
 
 app = FastAPI(title="PeliPick API")
 
@@ -54,7 +54,7 @@ def login(payload: UserCredentials) -> AuthResponse:
         wait_seconds = attempt["locked_until"] - now
         raise HTTPException(
             status_code=429,
-            detail=f"Demasiados intentos fallidos. ProbÃ¡ de nuevo en {wait_seconds}s.",
+            detail=f"Demasiados intentos fallidos. Probá de nuevo en {wait_seconds}s.",
         )
 
     user = db.get_user_by_username(payload.username)
@@ -67,9 +67,9 @@ def login(payload: UserCredentials) -> AuthResponse:
         if lock_seconds:
             raise HTTPException(
                 status_code=429,
-                detail=f"Demasiados intentos fallidos. ProbÃ¡ de nuevo en {lock_seconds}s.",
+                detail=f"Demasiados intentos fallidos. Probá de nuevo en {lock_seconds}s.",
             )
-        raise HTTPException(status_code=401, detail="Usuario o contraseÃ±a incorrectos.")
+        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos.")
 
     db.clear_login_attempts(payload.username)
     token = auth.create_token()
@@ -93,7 +93,7 @@ def forgot_password(payload: PasswordResetRequest) -> PasswordResetStartResponse
 def reset_password(payload: PasswordResetConfirmRequest) -> None:
     token_record = db.get_password_reset_token(auth.hash_token(payload.token))
     if token_record is None or token_record["expires_at"] < auth.now_ts():
-        raise HTTPException(status_code=400, detail="Token de recuperaciÃ³n invÃ¡lido o expirado.")
+        raise HTTPException(status_code=400, detail="Token de recuperación inválido o expirado.")
 
     password_hash, password_salt = auth.hash_password(payload.password)
     db.update_user_password(token_record["user_id"], password_hash, password_salt)
@@ -125,7 +125,7 @@ async def recommend_titles_from_zip(
     user: sqlite3.Row = Depends(auth.get_current_user),
 ) -> RecommendResponse:
     if not (file.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="SubÃ­ el .zip que exporta Letterboxd.")
+        raise HTTPException(status_code=400, detail="Subí el .zip que exporta Letterboxd.")
 
     data = await file.read()
     if len(data) > MAX_ZIP_SIZE:
@@ -139,7 +139,7 @@ async def recommend_titles_from_zip(
     if not ratings:
         raise HTTPException(
             status_code=400,
-            detail="No encontrÃ© ratings ni reviews usables en ese zip.",
+            detail="No encontré ratings ni reviews usables en ese zip.",
         )
 
     candidates = catalog.CATALOG
@@ -177,7 +177,7 @@ def submit_feedback(
 ) -> dict[str, str]:
     recommendation = db.get_recommendation(payload.recommendation_id, user["id"])
     if recommendation is None:
-        raise HTTPException(status_code=404, detail="RecomendaciÃ³n no encontrada.")
+        raise HTTPException(status_code=404, detail="Recomendación no encontrada.")
 
     db.save_feedback(user["id"], payload.recommendation_id, payload.status)
     return {"status": "ok"}
