@@ -28,3 +28,36 @@ def test_recommend_uses_custom_catalog_when_provided() -> None:
     )
 
     assert [item.title for item in response.recommendations] == ["Custom Movie"]
+
+
+def test_recommend_breaks_match_score_ties_by_raw_score_not_catalog_order() -> None:
+    # both items clamp to the same displayed match_score (99), but the
+    # series scores higher before clamping — it should rank first even
+    # though it's listed second in the catalog and gets the series penalty.
+    catalog = [
+        {
+            "title": "Capped Movie",
+            "year": 2000,
+            "kind": "movie",
+            "tags": ["psychological", "dark", "mysterious"],
+        },
+        {
+            "title": "Higher Raw Series",
+            "year": 2020,
+            "kind": "series",
+            "tags": ["psychological", "dark", "mysterious", "character", "intimate", "funny"],
+        },
+    ]
+
+    response = recommend(
+        ratings=[RatedItem(title="Old Movie", rating=5, review="psychological")],
+        mood="psychological",
+        catalog=catalog,
+    )
+
+    assert [item.title for item in response.recommendations] == [
+        "Higher Raw Series",
+        "Capped Movie",
+    ]
+    assert response.recommendations[0].match_score == 99
+    assert response.recommendations[1].match_score == 99

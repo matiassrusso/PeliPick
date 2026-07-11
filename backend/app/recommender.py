@@ -77,7 +77,7 @@ def recommend(
     mood_text = _normalize(mood)
     mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
 
-    scored: list[Recommendation] = []
+    scored: list[tuple[int, Recommendation]] = []
     for item in catalog:
         if _normalize(item["title"]) in seen_titles:
             continue
@@ -103,22 +103,30 @@ def recommend(
             reasons.append("tiene pinta de ser un buen riesgo para ampliar tu mapa")
 
         scored.append(
-            Recommendation(
-                title=item["title"],
-                year=item["year"],
-                kind=item["kind"],
-                why=", y ".join(reasons) + ".",
-                match_score=max(1, min(score, 99)),
-                tags=item["tags"],
-                poster_path=item.get("poster_path"),
-                backdrop_path=item.get("backdrop_path"),
-                overview=item.get("overview", ""),
-                vote_average=item.get("vote_average"),
+            (
+                score,
+                Recommendation(
+                    title=item["title"],
+                    year=item["year"],
+                    kind=item["kind"],
+                    why=", y ".join(reasons) + ".",
+                    match_score=max(1, min(score, 99)),
+                    tags=item["tags"],
+                    poster_path=item.get("poster_path"),
+                    backdrop_path=item.get("backdrop_path"),
+                    overview=item.get("overview", ""),
+                    vote_average=item.get("vote_average"),
+                ),
             )
         )
 
-    scored.sort(key=lambda item: item.match_score, reverse=True)
+    # sort by the raw (uncapped) score, not the clamped match_score — many
+    # strong matches hit the same 99 display ceiling, and sorting on the
+    # clamped value would make ties fall back to catalog order (movies
+    # always listed before series), silently starving series out of the
+    # top 5 even when they scored just as well.
+    scored.sort(key=lambda pair: pair[0], reverse=True)
     return RecommendResponse(
         taste_summary=summarize_taste(ratings, mood),
-        recommendations=scored[:5],
+        recommendations=[recommendation for _, recommendation in scored[:5]],
     )

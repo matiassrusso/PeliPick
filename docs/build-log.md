@@ -1,5 +1,39 @@
 # Build Log
 
+## 2026-07-11 (series en el catálogo)
+
+### `/discover/tv` sumado al catálogo real
+
+- `backend/app/tmdb_client.py`: agrega `DISCOVER_TV_URL` + `TV_GENRE_ID_TAG_MAP`
+  (los ids de género de TV de TMDb son un set distinto al de películas — sin
+  Romance/Thriller/Horror standalone) + `MOOD_TV_GENRE_ID_MAP` (solo `funny` y
+  `action` tienen género de TV limpio)
+- `_map_result` ahora recibe `kind` y `genre_tag_map`, y lee `name`/
+  `first_air_date` para series en vez de `title`/`release_date`
+- `fetch_candidates` pega a `/discover/movie` y `/discover/tv` y devuelve
+  ambos catálogos concatenados
+
+### Bug encontrado y arreglado: empates de score enmascaraban a las series
+
+- al probar el flujo real con series de por medio, nunca aparecían en el
+  top 5 pese a llegar bien taggeadas como candidatas
+- causa raíz: `recommend()` ordenaba por `match_score`, que ya viene
+  clampeado a 99 — muchos candidatos empatan ahí, y con orden estable el
+  empate siempre caía del lado de las películas (listadas primero en el
+  catálogo combinado), agravado por la penalización de -8 a series
+- fix: ordenar por el score crudo (sin clamp) y clampear solo para mostrar;
+  este bug ya afectaba la calidad del ranking en general (no solo series),
+  simplemente era invisible con el catálogo mock de 8 títulos
+- test de regresión: dos candidatos que empatan en `match_score` (99) pero
+  difieren en score crudo deben ordenarse por el crudo, no por posición en
+  el catálogo
+- badge "Serie" agregado en el frontend (`Recommend.tsx`) — el campo `kind`
+  ya viajaba pero nunca se renderizaba, y ahora que aparecen series reales
+  hacía falta distinguirlas visualmente de las películas
+- 3 tests nuevos (32 → 35)
+- verificado end-to-end contra TMDb real: series aparecen en el top 5 y se
+  ven con el badge correcto en la UI
+
 ## 2026-07-11 (agente de IA)
 
 ### Gemini conectado

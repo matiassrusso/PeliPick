@@ -15,13 +15,14 @@
 - persistencia en SQLite: usuarios, ratings importados, recomendaciones
   servidas y feedback
 - feedback explícito por pick (me interesa / no me interesa / ya la vi)
-- catálogo real con `TMDb` (`/discover/movie`, mapeo género + overview a tags
-  propios, fallback al mock si falla o no hay key), con póster/backdrop/
-  overview/rating viajando hasta el frontend
+- catálogo real con `TMDb` (`/discover/movie` y `/discover/tv`, mapeo género +
+  overview a tags propios, fallback al mock si falla o no hay key), con
+  póster/backdrop/overview/rating viajando hasta el frontend
 - agente de IA con `Gemini` (free tier, sin pagar OpenAI de entrada): refina
   el resumen de gusto y el orden/razones de los picks ya filtrados por el
   heurístico, con fallback al resultado heurístico si falla o no hay key
-- tests de backend (32, incluyendo auth, feedback, TMDb y Gemini mockeados)
+- tests de backend (35, incluyendo auth, feedback, TMDb, Gemini y el
+  desempate por score crudo mockeados/cubiertos)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (CSV + mood + resultados con feedback) / NotFound
@@ -35,10 +36,9 @@
   - falta cubrir más variantes de columnas y reportar filas descartadas
 
 - recomendación
-  - ya scorea contra películas reales de TMDb, no solo el mock
+  - ya scorea contra películas y series reales de TMDb, no solo el mock
   - el mapeo género/overview → tags es heurístico y coarse, sin nuance real
     de tono/ritmo
-  - solo películas, no series
   - el agente de Gemini reordena y reescribe texto sobre esos candidatos,
     pero no rescorea ni trae candidatos propios — sigue acotado a lo que
     ya filtró el heurístico
@@ -60,7 +60,6 @@
   contra TMDb, no es trivial con exports grandes
 - historial de sesiones de recomendación revisitables
 - cast y tráiler en el detalle de cada película
-- series en el catálogo real (`/discover/tv`)
 - caché de resultados de TMDb si el uso crece
 - import de historial por username de Letterboxd (scraping), como alternativa
   al CSV manual — evaluado, pendiente por ser la parte más frágil técnicamente

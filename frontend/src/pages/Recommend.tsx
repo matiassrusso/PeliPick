@@ -122,6 +122,9 @@ function MovieModal({
                 {rec.title}
               </h2>
               <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-muted-foreground">
+                {rec.kind === "series" && (
+                  <span className="px-2 py-0.5 rounded-full bg-secondary text-xs">Serie</span>
+                )}
                 <span>{rec.year}</span>
                 {rec.vote_average != null && (
                   <span className="flex items-center gap-1">
@@ -223,9 +226,16 @@ function RecommendationCard({
         />
 
         <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3" style={{ zIndex: 3 }}>
-          <span className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 flex items-center justify-center text-xs font-medium text-primary">
-            {index + 1}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 flex items-center justify-center text-xs font-medium text-primary">
+              {index + 1}
+            </span>
+            {rec.kind === "series" && (
+              <span className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 text-[10px] font-medium text-white/80">
+                Serie
+              </span>
+            )}
+          </div>
           {feedback && (
             <span
               className={`w-7 h-7 rounded-full flex items-center justify-center ${

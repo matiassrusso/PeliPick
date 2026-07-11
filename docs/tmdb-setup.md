@@ -32,19 +32,21 @@ de `.env` propio (stdlib, sin sumar `python-dotenv`).
 ## Cómo se usa
 
 - [backend/app/tmdb_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\tmdb_client.py)
-  pide candidatos a `/discover/movie` (populares, `vote_count.gte=200`, en
-  inglés) y si el mood mapea a un género limpio (`funny`, `romance`,
-  `action`, `psychological`) lo usa para sesgar la búsqueda.
-- Cada resultado de TMDb se convierte a tags de nuestro vocabulario
-  (`psychological`, `dark`, `romantic`, etc.) combinando dos señales:
-  - género → tags, con una tabla fija (`GENRE_ID_TAG_MAP`)
+  pide candidatos a `/discover/movie` y a `/discover/tv` (populares,
+  `vote_count.gte=200`, en inglés) y si el mood mapea a un género limpio en
+  cada catálogo lo usa para sesgar la búsqueda (`funny`, `romance`, `action`,
+  `psychological` para películas; solo `funny` y `action` tienen un género de
+  TV limpio — TMDb no tiene géneros de TV para romance/thriller/horror).
+- Cada resultado se convierte a tags de nuestro vocabulario (`psychological`,
+  `dark`, `romantic`, etc.) combinando dos señales:
+  - género → tags, con una tabla fija por tipo (`GENRE_ID_TAG_MAP` para
+    películas, `TV_GENRE_ID_TAG_MAP` para series — los ids de género de TMDb
+    son un set distinto para TV)
   - texto del overview escaneado con el mismo diccionario de hints que ya se
     usaba para leer las reviews del usuario
 - Esto es heurístico y coarse a propósito — no hay nuance real de tono/ritmo
   todavía. Eso lo va a dar el agente de IA cuando haya key de un proveedor
   LLM.
-- Solo películas por ahora, no series (`/discover/tv` queda para una fase
-  posterior).
 - Sin caché de resultados — no hay volumen que lo justifique todavía.
 
 ## Si TMDb falla o no está configurada

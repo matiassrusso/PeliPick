@@ -92,6 +92,11 @@ Piezas actuales:
   candidatos ya filtrados por TMDb, nunca inventa títulos ni metadata
 - si Gemini falla, no está configurada, o devuelve picks fuera de la lista de
   candidatos, cae al resultado heurístico sin romper la respuesta
+- el ranking heurístico ordena por el score crudo (sin clamp), no por el
+  `match_score` mostrado (clampeado a 99): con series reales sumadas al
+  catálogo, muchos candidatos empatan en el score clampeado, y ordenar por
+  ese valor hacía que el empate cayera siempre del lado de las películas
+  (listadas antes que las series en el catálogo combinado)
 - del zip de UI generado externamente, se descartó todo lo que las páginas
   reales no usaban (Radix, shadcn/ui, CVA, `react-hook-form`, `recharts`) en
   vez de portarlo "porque estaba" — se verificó con `grep` qué importaba cada
@@ -99,9 +104,8 @@ Piezas actuales:
 
 ## Limitaciones actuales
 
-- catálogo real de `TMDb`, pero el mapeo género/overview → tags es heurístico
-  y coarse (no hay nuance real de tono/ritmo todavía)
-- solo películas del catálogo real, no series (`/discover/tv` queda pendiente)
+- catálogo real de `TMDb` (películas y series), pero el mapeo género/overview
+  → tags es heurístico y coarse (no hay nuance real de tono/ritmo todavía)
 - sin caché de resultados de TMDb ni de Gemini
 - el agente de IA reordena y reescribe texto, no rescorea ni trae candidatos
   propios — sigue acotado a lo que ya filtró el heurístico
@@ -114,6 +118,5 @@ Piezas actuales:
 - perfil de gusto visual (necesita matchear el CSV del usuario contra TMDb)
 - historial de sesiones de recomendación revisitables
 - cast y tráiler en el detalle de película
-- series en el catálogo real (`/discover/tv`)
 - scraping o import automático desde el username de Letterboxd, como
   alternativa al CSV manual

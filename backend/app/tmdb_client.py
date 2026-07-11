@@ -9,6 +9,7 @@ from .recommender import positive_tags_from_text
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
+DISCOVER_TV_URL = "https://api.themoviedb.org/3/discover/tv"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 REQUEST_TIMEOUT = 5
 
@@ -48,6 +49,35 @@ MOOD_GENRE_ID_MAP: dict[str, int] = {
     "psychological": 53,
 }
 
+# TMDb's TV genre ids are a different set than movie genre ids (e.g. no
+# standalone Romance/Thriller/Horror). Mapped separately, same coarse
+# philosophy as GENRE_ID_TAG_MAP.
+TV_GENRE_ID_TAG_MAP: dict[int, list[str]] = {
+    10759: ["action", "kinetic", "blockbuster"],  # Action & Adventure
+    16: ["stylized"],  # Animation
+    35: ["funny", "light"],  # Comedy
+    80: ["dark", "psychological"],  # Crime
+    99: [],  # Documentary
+    18: ["character"],  # Drama
+    10751: ["light"],  # Family
+    10762: ["light"],  # Kids
+    9648: ["mysterious", "psychological"],  # Mystery
+    10763: [],  # News
+    10764: [],  # Reality
+    10765: ["stylized", "mysterious"],  # Sci-Fi & Fantasy
+    10766: ["romantic", "intimate"],  # Soap
+    10767: [],  # Talk
+    10768: ["dark"],  # War & Politics
+    37: ["character"],  # Western
+}
+
+# Only "funny" and "action" have a clean TV genre match; the rest fall back
+# to unfiltered discovery + tag scoring, same as MOOD_GENRE_ID_MAP.
+MOOD_TV_GENRE_ID_MAP: dict[str, int] = {
+    "funny": 35,
+    "action": 10759,
+}
+
 
 class TmdbError(Exception):
     pass
@@ -85,21 +115,25 @@ def _image_url(path: str | None, size: str) -> str | None:
     return f"{TMDB_IMAGE_BASE}/{size}{path}"
 
 
-def _map_result(raw: dict) -> dict | None:
-    title = (raw.get("title") or "").strip()
-    release_date = raw.get("release_date") or ""
-    if not title or len(release_date) < 4:
+def _map_result(
+    raw: dict, kind: str = "movie", genre_tag_map: dict[int, list[str]] = GENRE_ID_TAG_MAP
+) -> dict | None:
+    title_field = "title" if kind == "movie" else "name"
+    date_field = "release_date" if kind == "movie" else "first_air_date"
+    title = (raw.get(title_field) or "").strip()
+    date_value = raw.get(date_field) or ""
+    if not title or len(date_value) < 4:
         return None
 
     try:
-        year = int(release_date[:4])
+        year = int(date_value[:4])
     except ValueError:
         return None
 
     overview = raw.get("overview") or ""
     tags: set[str] = set()
     for genre_id in raw.get("genre_ids", []):
-        tags.update(GENRE_ID_TAG_MAP.get(genre_id, []))
+        tags.update(genre_tag_map.get(genre_id, []))
     tags.update(positive_tags_from_text(overview))
 
     if not tags:
@@ -108,7 +142,7 @@ def _map_result(raw: dict) -> dict | None:
     return {
         "title": title,
         "year": year,
-        "kind": "movie",
+        "kind": kind,
         "tags": sorted(tags),
         "poster_path": _image_url(raw.get("poster_path"), "w500"),
         "backdrop_path": _image_url(raw.get("backdrop_path"), "w780"),
@@ -117,12 +151,16 @@ def _map_result(raw: dict) -> dict | None:
     }
 
 
-def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:
-    api_key = os.environ.get("TMDB_API_KEY")
-    if not api_key:
-        raise TmdbError("TMDB_API_KEY no configurada.")
-
-    genre_id = MOOD_GENRE_ID_MAP.get(mood.strip().lower())
+def _fetch_from_discover(
+    url: str,
+    kind: str,
+    genre_tag_map: dict[int, list[str]],
+    mood_genre_map: dict[str, int],
+    mood: str,
+    api_key: str,
+    pages: int,
+) -> list[dict]:
+    genre_id = mood_genre_map.get(mood.strip().lower())
 
     candidates: list[dict] = []
     for page in range(1, pages + 1):
@@ -137,12 +175,26 @@ def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:
         if genre_id:
             params["with_genres"] = genre_id
 
-        url = f"{DISCOVER_URL}?{urllib.parse.urlencode(params)}"
-        data = _get_json(url)
+        page_url = f"{url}?{urllib.parse.urlencode(params)}"
+        data = _get_json(page_url)
 
         for raw in data.get("results", []):
-            mapped = _map_result(raw)
+            mapped = _map_result(raw, kind, genre_tag_map)
             if mapped:
                 candidates.append(mapped)
 
     return candidates
+
+
+def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    movies = _fetch_from_discover(
+        DISCOVER_URL, "movie", GENRE_ID_TAG_MAP, MOOD_GENRE_ID_MAP, mood, api_key, pages
+    )
+    series = _fetch_from_discover(
+        DISCOVER_TV_URL, "series", TV_GENRE_ID_TAG_MAP, MOOD_TV_GENRE_ID_MAP, mood, api_key, pages
+    )
+    return movies + series

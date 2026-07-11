@@ -46,6 +46,8 @@ def test_fetch_candidates_maps_genres_and_overview_to_tags(monkeypatch) -> None:
 
     candidates = tmdb_client.fetch_candidates("funny", pages=1)
 
+    # movie-shaped fixture also gets sent through the TV discover call, but
+    # it has no "name"/"first_air_date" so it maps to nothing there.
     assert len(candidates) == 1
     item = candidates[0]
     assert item["title"] == "Fake Thriller"
@@ -57,7 +59,59 @@ def test_fetch_candidates_maps_genres_and_overview_to_tags(monkeypatch) -> None:
     assert item["poster_path"] == "https://image.tmdb.org/t/p/w500/poster123.jpg"
     assert item["backdrop_path"] == "https://image.tmdb.org/t/p/w780/backdrop456.jpg"
     assert item["vote_average"] == 8.1
-    assert "with_genres=35" in calls[0]  # "funny" mood biases toward Comedy
+    assert len(calls) == 2
+    assert "discover/movie" in calls[0] and "with_genres=35" in calls[0]  # "funny" -> Comedy
+    assert "discover/tv" in calls[1] and "with_genres=35" in calls[1]
+
+
+def test_fetch_candidates_includes_series_from_tv_discover(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        if "discover/tv" in url:
+            return {
+                "results": [
+                    {
+                        "name": "Fake Prestige Drama",
+                        "first_air_date": "2021-03-01",
+                        "genre_ids": [18],  # Drama -> character
+                        "overview": "",
+                        "poster_path": "/tvposter.jpg",
+                        "vote_average": 8.5,
+                    }
+                ]
+            }
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    candidates = tmdb_client.fetch_candidates("funny", pages=1)
+
+    assert len(candidates) == 1
+    item = candidates[0]
+    assert item["title"] == "Fake Prestige Drama"
+    assert item["year"] == 2021
+    assert item["kind"] == "series"
+    assert item["tags"] == ["character"]
+    assert item["poster_path"] == "https://image.tmdb.org/t/p/w500/tvposter.jpg"
+
+
+def test_map_result_reads_tv_fields_when_kind_is_series() -> None:
+    mapped = tmdb_client._map_result(
+        {
+            "name": "Fake Show",
+            "first_air_date": "2019-01-01",
+            "genre_ids": [10765],  # Sci-Fi & Fantasy
+            "overview": "",
+        },
+        kind="series",
+        genre_tag_map=tmdb_client.TV_GENRE_ID_TAG_MAP,
+    )
+
+    assert mapped is not None
+    assert mapped["kind"] == "series"
+    assert mapped["year"] == 2019
+    assert {"stylized", "mysterious"} <= set(mapped["tags"])
 
 
 def test_map_result_handles_missing_images() -> None:
