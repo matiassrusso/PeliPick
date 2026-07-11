@@ -113,23 +113,35 @@ Piezas actuales:
   reales no usaban (Radix, shadcn/ui, CVA, `react-hook-form`, `recharts`) en
   vez de portarlo "porque estaba" — se verificó con `grep` qué importaba cada
   página antes de decidir
+- rate limiting de login por username (backoff exponencial, tope 15 min) y
+  recuperación de contraseña con token de un solo uso, hasheado en SQLite,
+  que expira a la hora e invalida sesiones viejas al usarse
+- el token de reset **nunca** viaja en la respuesta de `/auth/forgot-password`
+  salvo `PELIPICK_DEBUG=1` — sin eso, cualquiera con un username válido
+  podía tomar la cuenta sin tocar el email del usuario (hallazgo encontrado
+  en revisión, arreglado antes de mergear)
+- caché en memoria de `/discover/movie` y `/discover/tv` (TTL 5 min, tope
+  32 entradas, LRU) — evita pegarle a TMDb en cada request si el
+  mood+página ya se pidió hace poco
 
 ## Limitaciones actuales
 
 - catálogo real de `TMDb` (películas y series), pero el mapeo género/overview
   → tags es heurístico y coarse (no hay nuance real de tono/ritmo todavía)
-- sin caché de resultados de TMDb ni de Gemini
+- sin caché de resultados de Gemini
 - el agente de IA reordena y reescribe texto, no rescorea ni trae candidatos
   propios — sigue acotado a lo que ya filtró el heurístico
 - no hay scraping de Letterboxd por username, solo import del zip manual
 - no usa los `Tags` propios del usuario en `diary.csv`/`reviews.csv` (casi
   nadie los completa, pero cuando existen son señal directa)
-- sin recuperación de contraseña, sin rate limiting de login
+- recuperación de contraseña sin envío real de mail todavía — el flujo
+  funciona pero el token no llega al usuario sin `PELIPICK_DEBUG=1`
 
 ## Próxima arquitectura probable
 
 - perfil de gusto visual (necesita matchear el historial del usuario contra TMDb)
 - historial de sesiones de recomendación revisitables
-- cast y tráiler en el detalle de película
+- cast y tráiler en el detalle de película — necesita guardar el id real
+  de TMDb por título (hoy no viaja por el pipeline)
 - scraping o import automático desde el username de Letterboxd, como
   alternativa al zip manual

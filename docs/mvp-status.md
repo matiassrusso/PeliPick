@@ -23,8 +23,16 @@
 - agente de IA con `Gemini` (free tier, sin pagar OpenAI de entrada): refina
   el resumen de gusto y el orden/razones de los picks ya filtrados por el
   heurístico, con fallback al resultado heurístico si falla o no hay key
-- tests de backend (45, incluyendo auth, feedback, TMDb, Gemini, el
-  desempate por score crudo, y el parser del zip de Letterboxd)
+- rate limiting de login (backoff exponencial por username, tope 15 min) y
+  recuperación de contraseña (token hasheado en SQLite, expira a la hora,
+  invalida sesiones viejas al resetear) — el token solo viaja en la
+  respuesta con `PELIPICK_DEBUG=1`, nunca por default (no hay proveedor de
+  mail todavía)
+- caché en memoria de resultados de TMDb (`/discover/movie` y
+  `/discover/tv`, TTL de 5 min, tope de 32 entradas)
+- tests de backend (52, incluyendo auth, feedback, TMDb, Gemini, el
+  desempate por score crudo, el parser del zip de Letterboxd, rate
+  limiting/reset de contraseña, y la caché de TMDb)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / NotFound
@@ -63,14 +71,16 @@
   actores favoritos) — necesita matchear cada título del CSV del usuario
   contra TMDb, no es trivial con exports grandes
 - historial de sesiones de recomendación revisitables
-- cast y tráiler en el detalle de cada película
-- caché de resultados de TMDb si el uso crece
+- cast y tráiler en el detalle de cada película — necesita empezar a
+  guardar el id real de TMDb por título, que hoy no viaja por el pipeline
 - import de historial por username de Letterboxd (scraping), como alternativa
   al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - soportar `Tags` de usuario del zip cuando estén presentes
 - reportar filas descartadas del CSV base
 - observabilidad mínima
-- recuperación de contraseña, rate limiting de login
+- envío real de mail para recuperación de contraseña (hoy el token nunca
+  sale de la respuesta salvo con `PELIPICK_DEBUG=1`, así que el flujo
+  funciona pero no hay forma real de que el usuario lo reciba)
 
 ## No entra todavía
 
