@@ -41,6 +41,27 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       que sumar ese campo desde `tmdb_client.py` hasta el modelo, la DB, y
       lo que ya viene del catálogo mock (que no tiene id real de TMDb, ojo
       con eso al armar el fallback) | owner: claude | rama: `claude/cast-001`
+
+      **Progreso (por si se corta la sesión, retomar desde acá):**
+      - [x] Paso 1 (commit `2c3d5c2`): `tmdb_id` sumado a
+        `tmdb_client._map_result` (`raw.get("id")`), a `Recommendation`
+        (models.py), pasado en `recommender.py`, columna nueva en
+        `recommendations_served` con migración `ALTER TABLE` guardada en
+        try/except (DBs viejas no tienen la columna), `save_recommendations`
+        actualizado. Catálogo mock (`catalog.py`) no tiene `tmdb_id` — queda
+        `None` ahí, hay que manejarlo en el endpoint/frontend (no pedir
+        cast/tráiler si es `None`). 52/52 tests siguen en verde.
+      - [ ] Paso 2 (siguiente): tests para el paso 1 (no hay ninguno
+        todavía cubriendo que `tmdb_id` viaje de punta a punta)
+      - [ ] Paso 3: `tmdb_client.py` — `fetch_credits(tmdb_id, kind)` y
+        `fetch_trailer(tmdb_id, kind)` contra `/movie/{id}/credits` +
+        `/movie/{id}/videos` (o `/tv/...` si `kind == "series"`)
+      - [ ] Paso 4: endpoint nuevo en `main.py` (algo como
+        `GET /movies/{tmdb_id}/details?kind=movie`) que devuelva cast (top
+        N) + key de YouTube del tráiler
+      - [ ] Paso 5: frontend — el modal (`Recommend.tsx`) pide ese endpoint
+        al abrirse, solo si `rec.tmdb_id` no es null
+      - [ ] Paso 6: docs (`api.md`, `mvp-status.md`, `architecture.md`)
 - [ ] [historial-001] Historial de sesiones de recomendación revisitables
       (nuevo endpoint de listado sobre `db.py`, nueva página de frontend) |
       owner: codex | rama: `codex/historial-001`
