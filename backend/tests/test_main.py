@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.tmdb_client import TmdbError
 
 client = TestClient(app)
 
@@ -75,6 +76,21 @@ def test_feedback_rejects_recommendation_from_another_user() -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_recommend_csv_falls_back_to_mock_catalog_when_tmdb_fails(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def raise_tmdb_error(mood: str):
+        raise TmdbError("boom")
+
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_candidates", raise_tmdb_error)
+
+    headers = _auth_headers("tmdbfallback")
+    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+
+    assert response.status_code == 200
+    assert response.json()["recommendations"]
 
 
 def test_feedback_rejects_invalid_status() -> None:

@@ -4,7 +4,7 @@ import sqlite3
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db
+from . import catalog, db, tmdb_client
 from .auth import create_token, get_current_user, hash_password, verify_password
 from .csv_ingest import parse_ratings_csv
 from .models import (
@@ -84,7 +84,14 @@ def recommend_titles_from_csv(
             detail="No encontré filas con título y rating válidos en ese CSV.",
         )
 
-    response = recommend(ratings, payload.mood)
+    candidates = catalog.CATALOG
+    if tmdb_client.is_configured():
+        try:
+            candidates = tmdb_client.fetch_candidates(payload.mood)
+        except tmdb_client.TmdbError:
+            candidates = catalog.CATALOG
+
+    response = recommend(ratings, payload.mood, catalog=candidates)
 
     db.save_rated_items(
         user["id"], [(item.title, item.rating, item.review) for item in ratings]

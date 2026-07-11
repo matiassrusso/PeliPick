@@ -15,7 +15,9 @@
 - persistencia en SQLite: usuarios, ratings importados, recomendaciones
   servidas y feedback
 - feedback explícito por pick (me interesa / no me interesa / ya la vi)
-- tests de backend (16, incluyendo auth y feedback)
+- catálogo real con `TMDb` (`/discover/movie`, mapeo género + overview a tags
+  propios, fallback al mock si falla o no hay key)
+- tests de backend (21, incluyendo auth, feedback y TMDb mockeado)
 - build verificado de frontend
 
 ## Hecho pero verde
@@ -26,8 +28,10 @@
   - falta cubrir más variantes de columnas y reportar filas descartadas
 
 - recomendación
-  - sirve para demo
-  - todavía depende de catálogo mock
+  - ya scorea contra películas reales de TMDb, no solo el mock
+  - el mapeo género/overview → tags es heurístico y coarse, sin nuance real
+    de tono/ritmo
+  - solo películas, no series
   - sin agente de IA todavía (sintetizar gusto y rerankear con LLM)
 
 - UX web
@@ -36,10 +40,10 @@
 
 ## Falta para un MVP más serio
 
-- catálogo real con `TMDb` (guía de setup lista en `docs/tmdb-setup.md`,
-  falta conectar código — necesita API key)
 - agente de IA conectado (sintetizar gusto desde reviews, rerankear picks —
   necesita API key de un proveedor LLM)
+- series en el catálogo real (`/discover/tv`)
+- caché de resultados de TMDb si el uso crece
 - import de historial por username de Letterboxd (scraping), como alternativa
   al CSV manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - parser endurecido para más variantes de export real
@@ -50,7 +54,6 @@
 ## No entra todavía
 
 - scraping complejo
-- login real
 - app mobile
 - social features
 - chat agente largo

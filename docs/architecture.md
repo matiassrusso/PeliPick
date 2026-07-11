@@ -7,7 +7,8 @@ Hoy `PeliPick` es una vertical slice local con dos partes:
 - `frontend` en `React + TypeScript + Vite`
 - `backend` en `FastAPI`
 
-Ya hay base de datos (`SQLite`) y login. No hay catálogo real todavía. No hay integración real con Letterboxd todavía.
+Ya hay base de datos (`SQLite`), login y catálogo real (`TMDb`, con fallback a
+mock). No hay integración real con Letterboxd todavía (solo CSV export).
 
 ## Flujo actual
 
@@ -16,7 +17,8 @@ Ya hay base de datos (`SQLite`) y login. No hay catálogo real todavía. No hay 
 3. El frontend manda el contenido crudo al backend con su token de sesión.
 4. El backend parsea filas válidas.
 5. El backend resume el gusto del usuario.
-6. El backend scorea un catálogo mock.
+6. El backend trae candidatos de `TMDb` (o cae al catálogo mock si no hay key
+   configurada o TMDb falla) y los scorea.
 7. El backend persiste los ratings importados y las recomendaciones servidas.
 8. El backend devuelve hasta 5 recomendaciones explicadas.
 9. El frontend renderiza el resumen y los picks, con botones de feedback por pick.
@@ -54,29 +56,37 @@ Piezas actuales:
 - [backend/app/catalog.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\catalog.py): catálogo mock
 - [backend/app/db.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
 - [backend/app/auth.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\auth.py): hashing de password (PBKDF2, stdlib) y dependencia de sesión
+- [backend/app/tmdb_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\tmdb_client.py): cliente TMDb (stdlib `urllib`), mapea género + overview a tags propios
 
 ## Decisiones deliberadas
 
 - `CSV` antes que scraping: más simple para validar producto
-- catálogo mock antes que `TMDb`: más simple para validar UX y ranking
 - heurística simple antes que embeddings/agente libre: más control y menos humo
 - `SQLite` vía stdlib en vez de un ORM: el esquema es chico (4 tablas), no
   justifica sumar `SQLAlchemy` todavía
 - tokens de sesión opacos en vez de `JWT`: logout trivial (borrar la fila), sin
   sumar una librería de firma
+- `TMDb` vía `urllib` stdlib, sin sumar `httpx`/`requests` al runtime del
+  backend (solo se usan como dependencia de test)
+- IDs de género de TMDb hardcodeados (son constantes públicas estables) en vez
+  de fetchear y cachear `/genre/movie/list`
+- si TMDb falla o no está configurada, cae al catálogo mock en vez de romper
+  la respuesta — ver `docs/tmdb-setup.md`
 
 ## Limitaciones actuales
 
-- no hay recomendaciones basadas en catálogo real (sigue siendo mock)
+- catálogo real de `TMDb`, pero el mapeo género/overview → tags es heurístico
+  y coarse (no hay nuance real de tono/ritmo todavía)
+- solo películas del catálogo real, no series (`/discover/tv` queda pendiente)
+- sin caché de resultados de TMDb
 - no hay agente de IA conectado (sin API key de LLM todavía)
-- no hay integración real con `TMDb` (sin API key todavía, guía en `docs/tmdb-setup.md`)
 - no hay scraping de Letterboxd por username, solo CSV export manual
 - no parsea todavía todas las variantes de export de Letterboxd
 - sin recuperación de contraseña, sin rate limiting de login
 
 ## Próxima arquitectura probable
 
-- cliente real para `TMDb`
+- series en el catálogo real (`/discover/tv`)
 - agente de IA (LLM) para sintetizar gusto y rerankear picks, una vez haya
   API key
 - scraping o import automático desde el username de Letterboxd, como

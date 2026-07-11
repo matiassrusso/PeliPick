@@ -23,6 +23,15 @@ def _normalize(text: str) -> str:
     return text.strip().lower()
 
 
+def positive_tags_from_text(text: str) -> set[str]:
+    normalized = _normalize(text)
+    tags: set[str] = set()
+    for hint, hint_tags in POSITIVE_HINTS.items():
+        if hint in normalized:
+            tags.update(hint_tags)
+    return tags
+
+
 def summarize_taste(ratings: list[RatedItem], mood: str) -> str:
     loved = [item for item in ratings if item.rating >= 4]
     disliked = [item for item in ratings if item.rating <= 2.5]
@@ -46,9 +55,9 @@ def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[st
 
     for item in ratings:
         review = _normalize(item.review)
-        for hint, tags in POSITIVE_HINTS.items():
-            if hint in review or (hint == "funny" and item.rating >= 4.5):
-                positive_tags.update(tags)
+        positive_tags.update(positive_tags_from_text(item.review))
+        if item.rating >= 4.5:
+            positive_tags.update(POSITIVE_HINTS["funny"])
         for hint, tags in NEGATIVE_HINTS.items():
             if hint in review:
                 negative_tags.update(tags)
@@ -60,14 +69,16 @@ def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[st
     return set(positive_tags), set(negative_tags)
 
 
-def recommend(ratings: list[RatedItem], mood: str) -> RecommendResponse:
+def recommend(
+    ratings: list[RatedItem], mood: str, catalog: list[dict] = CATALOG
+) -> RecommendResponse:
     positive_tags, negative_tags = _collect_preference_tags(ratings)
     seen_titles = {_normalize(item.title) for item in ratings}
     mood_text = _normalize(mood)
     mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
 
     scored: list[Recommendation] = []
-    for item in CATALOG:
+    for item in catalog:
         if _normalize(item["title"]) in seen_titles:
             continue
 
