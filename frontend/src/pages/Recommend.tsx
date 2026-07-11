@@ -26,6 +26,7 @@ import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
 
 type Recommendation = {
   id: number;
+  tmdb_id: number | null;
   title: string;
   year: number;
   kind: string;
@@ -36,6 +37,11 @@ type Recommendation = {
   backdrop_path: string | null;
   overview: string;
   vote_average: number | null;
+};
+
+type MovieDetails = {
+  cast: { name: string; character: string; profile_path: string | null }[];
+  trailer_key: string | null;
 };
 
 type RecommendResponse = {
@@ -59,15 +65,50 @@ function formatFileSize(bytes: number): string {
 
 function MovieModal({
   rec,
+  token,
   feedback,
   onClose,
   onFeedback,
 }: {
   rec: Recommendation;
+  token: string | null;
   feedback?: FeedbackStatus;
   onClose: () => void;
   onFeedback: (status: FeedbackStatus) => void;
 }) {
+  const [details, setDetails] = useState<MovieDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setDetails(null);
+
+    if (rec.tmdb_id == null || !token) {
+      setLoadingDetails(false);
+      return;
+    }
+
+    setLoadingDetails(true);
+    fetch(`${API_BASE_URL}/movies/${rec.tmdb_id}/details?kind=${encodeURIComponent(rec.kind)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error();
+        return response.json() as Promise<MovieDetails>;
+      })
+      .then((body) => {
+        if (!cancelled) setDetails(body);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoadingDetails(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rec.tmdb_id, rec.kind, token]);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -97,6 +138,7 @@ function MovieModal({
         <div className="p-6">
           <button
             onClick={onClose}
+            aria-label="Cerrar detalle"
             className="absolute top-4 right-4 p-2 rounded-xl bg-background/80 backdrop-blur-sm border border-border hover:bg-secondary transition-colors"
           >
             <X className="w-4 h-4" />
@@ -150,6 +192,55 @@ function MovieModal({
           )}
 
           {rec.overview && <p className="mt-4 text-sm text-muted-foreground leading-relaxed">{rec.overview}</p>}
+
+          {loadingDetails && (
+            <div className="mt-5 pt-5 border-t border-border flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              Cargando reparto y tr&aacute;iler...
+            </div>
+          )}
+
+          {details && (details.cast.length > 0 || details.trailer_key) && (
+            <section className="mt-5 pt-5 border-t border-border">
+              {details.trailer_key && (
+                <a
+                  href={`https://www.youtube.com/watch?v=${details.trailer_key}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mb-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/30 bg-primary/10 text-sm text-primary hover:bg-primary/20 transition-colors"
+                >
+                  <Film className="w-4 h-4" />
+                  Ver tr&aacute;iler
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
+
+              {details.cast.length > 0 && (
+                <>
+                  <h3 className="text-xl font-serif mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                    Reparto
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                    {details.cast.map((member) => (
+                      <div key={`${member.name}-${member.character}`} className="flex items-center gap-2.5 rounded-xl bg-background/60 p-2.5 min-w-0">
+                        {member.profile_path ? (
+                          <img src={member.profile_path} alt={member.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <span className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm text-primary" aria-label={`Sin foto de ${member.name}`}>
+                            {member.name.charAt(0)}
+                          </span>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm leading-tight truncate">{member.name}</p>
+                          {member.character && <p className="text-xs text-muted-foreground truncate mt-0.5">{member.character}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
 
           <div className="mt-6 pt-5 border-t border-border">
             <p className="text-xs text-muted-foreground mb-3">¿Qué te parece este pick?</p>
@@ -596,6 +687,7 @@ export default function Recommend() {
         {selectedRec && (
           <MovieModal
             rec={selectedRec}
+            token={token}
             feedback={feedbackState[selectedRec.id]}
             onClose={() => setSelectedRec(null)}
             onFeedback={(status) => submitFeedback(selectedRec.id, status)}
