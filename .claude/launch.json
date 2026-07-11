@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pelipick-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d frontend && npm run dev -- --host 127.0.0.1 --port 4173"],
+      "port": 4173
+    }
+  ]
+}

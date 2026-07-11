@@ -1,0 +1,109 @@
+from collections import Counter
+
+from .catalog import CATALOG
+from .models import RatedItem, Recommendation, RecommendResponse
+
+
+POSITIVE_HINTS = {
+    "slow": ["slow", "quiet", "melancholic", "intimate"],
+    "psychological": ["psychological", "mysterious", "dark"],
+    "action": ["action", "kinetic", "blockbuster"],
+    "romance": ["romantic", "intimate"],
+    "funny": ["funny", "light", "sharp"],
+}
+
+NEGATIVE_HINTS = {
+    "boring": ["slow", "quiet"],
+    "empty": ["slow", "melancholic"],
+    "loud": ["loud", "action", "kinetic"],
+}
+
+
+def _normalize(text: str) -> str:
+    return text.strip().lower()
+
+
+def summarize_taste(ratings: list[RatedItem], mood: str) -> str:
+    loved = [item for item in ratings if item.rating >= 4]
+    disliked = [item for item in ratings if item.rating <= 2.5]
+
+    if not ratings:
+        base = "Todavía no tengo historial suficiente, así que arranco con picks bastante amplios."
+    elif len(loved) >= len(disliked):
+        base = "Tu historial tira más a cine de autor, personajes marcados y algo de riesgo controlado."
+    else:
+        base = "Tu historial parece castigar lo pretencioso y premiar cosas más directas o efectivas."
+
+    mood_text = _normalize(mood)
+    if mood_text:
+        return f"{base} Hoy además buscás algo con vibra '{mood_text}'."
+    return base
+
+
+def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[str]]:
+    positive_tags: Counter[str] = Counter()
+    negative_tags: Counter[str] = Counter()
+
+    for item in ratings:
+        review = _normalize(item.review)
+        for hint, tags in POSITIVE_HINTS.items():
+            if hint in review or (hint == "funny" and item.rating >= 4.5):
+                positive_tags.update(tags)
+        for hint, tags in NEGATIVE_HINTS.items():
+            if hint in review:
+                negative_tags.update(tags)
+        if item.rating >= 4.5:
+            positive_tags.update(["character", "intimate"])
+        if item.rating <= 2:
+            negative_tags.update(["loud"])
+
+    return set(positive_tags), set(negative_tags)
+
+
+def recommend(ratings: list[RatedItem], mood: str) -> RecommendResponse:
+    positive_tags, negative_tags = _collect_preference_tags(ratings)
+    seen_titles = {_normalize(item.title) for item in ratings}
+    mood_text = _normalize(mood)
+    mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
+
+    scored: list[Recommendation] = []
+    for item in CATALOG:
+        if _normalize(item["title"]) in seen_titles:
+            continue
+
+        tags = set(item["tags"])
+        score = 50
+        score += 12 * len(tags & positive_tags)
+        score -= 10 * len(tags & negative_tags)
+        score += 14 * len(tags & set(mood_tags))
+
+        if item["kind"] == "series":
+            score -= 8
+
+        if score < 40:
+            continue
+
+        reasons = []
+        if tags & positive_tags:
+            reasons.append("coincide con patrones que venís premiando")
+        if tags & set(mood_tags):
+            reasons.append("encaja con lo que querés hoy")
+        if not reasons:
+            reasons.append("tiene pinta de ser un buen riesgo para ampliar tu mapa")
+
+        scored.append(
+            Recommendation(
+                title=item["title"],
+                year=item["year"],
+                kind=item["kind"],
+                why=", y ".join(reasons) + ".",
+                match_score=max(1, min(score, 99)),
+                tags=item["tags"],
+            )
+        )
+
+    scored.sort(key=lambda item: item.match_score, reverse=True)
+    return RecommendResponse(
+        taste_summary=summarize_taste(ratings, mood),
+        recommendations=scored[:5],
+    )

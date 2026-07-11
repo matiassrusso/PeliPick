@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# SQLite
+*.db
+
+# Env / secrets
+.env
+.env.local
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Claude Code local settings
+.claude/settings.local.json
