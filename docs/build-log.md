@@ -1,5 +1,73 @@
 # Build Log
 
+## 2026-07-11 (flujo multi-agente: TASKS.md, Codex, review, merge)
+
+### Qué se armó
+
+Se decidió sumar Codex (y evaluar Gemini) trabajando en paralelo sobre el
+mismo repo, dividiendo tareas en vez de duplicar trabajo. Setup:
+
+- `TASKS.md` en la raíz: tablero de coordinación (Pending/In
+  Progress/Blocked/Done, owner, archivos tocados, dependencias).
+- Un worktree de git por agente (`pelipick-codex`, `pelipick-gemini`),
+  cada uno en su propia rama, arrancando desde `claude/zip-upload` para no
+  repetir ese trabajo.
+- Gemini no terminó participando — `pelipick-gemini` quedó sin usar.
+- A Codex se le asignaron `cache-001` (caché de TMDb) y `auth-001` (rate
+  limiting de login + recuperación de contraseña), con un prompt que
+  incluía las restricciones de stack de `AGENTS.md` explícitas (para no
+  repetir el problema de la sesión de Gemini, que había reescrito todo el
+  backend a Node sin que se lo pidieran).
+
+### Lo que entregó Codex
+
+`auth-001`: rate limiting por username con backoff exponencial (tope 15
+min), recuperación de contraseña con token de un solo uso hasheado en
+SQLite, expira a la hora, invalida sesiones viejas al usarse. `cache-001`:
+caché en memoria de `/discover/movie` y `/discover/tv` (TTL 5 min, tope 32
+entradas, LRU). 51 tests, todo documentado.
+
+### Revisión de Claude antes de mergear — 2 problemas reales encontrados
+
+1. **Encoding roto**: el editor de Codex metió BOM + mojibake (bytes UTF-8
+   reinterpretados como cp1252 y reencodeados, ej. "ó" → "Ã³") en los 10
+   archivos que tocó. Se detectó comparando el diff, se revirtió con el
+   mecanismo inverso (encode cp1252 → decode UTF-8), verificado a nivel de
+   codepoint. Commit `a5b4a4e`, sin cambios de comportamiento.
+2. **Crítico de seguridad**: `POST /auth/forgot-password` devolvía el
+   `reset_token` en la respuesta HTTP a cualquiera que supiera un
+   username — combinado con que `/auth/register` ya confirma con `409` si
+   un username existe, esto permitía tomar cualquier cuenta en 3 requests
+   sin tocar el email de nadie. Estaba documentado como limitación
+   temporal (sin proveedor de mail), pero exponerlo así igual era
+   inseguro. Fix: `reset_token` ahora solo viaja en la respuesta si
+   `PELIPICK_DEBUG=1` está seteado a mano — nunca por default, nunca en
+   producción. Verificado en vivo (con y sin la env var) y con test
+   negativo nuevo. Commit `4b7f80e`.
+
+También se sincronizaron `mvp-status.md`/`architecture.md`, que habían
+quedado desactualizadas (seguían listando cache/rate-limiting/recuperación
+de contraseña como pendientes).
+
+### Merge y push
+
+`codex/auth-001` (que ya traía `claude/zip-upload` en su base) se
+fast-forward-mergeó a `main` sin conflictos y se pusheó a GitHub —
+`bf855e0`. 52/52 tests, build de frontend limpio (con `node_modules`
+recién instalado en el worktree de Codex, no venía).
+
+### Siguiente ronda
+
+`TASKS.md` actualizado: `cast-001` (cast y tráiler, yo/Claude, rama
+`claude/cast-001`) e `historial-001` (historial de sesiones, Codex, rama
+`codex/historial-001`), ambas arrancando desde el `main` ya actualizado.
+`perfil-001` queda pendiente para después.
+
+**Nota para quien retome esto**: antes de pedir cast/tráiler hace falta
+guardar el `id` real de TMDb en el pipeline — hoy `Recommendation` y
+`recommendations_served` solo tienen título/año, no id. Ver la entrada de
+`cast-001` en `TASKS.md` para el detalle de qué archivos hay que tocar.
+
 ## 2026-07-11 (import del .zip completo de Letterboxd)
 
 ### Por qué

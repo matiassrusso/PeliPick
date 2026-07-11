@@ -215,6 +215,21 @@ def test_map_result_handles_missing_images() -> None:
     assert mapped["backdrop_path"] is None
 
 
+def test_map_result_captures_tmdb_id() -> None:
+    mapped = tmdb_client._map_result(
+        {
+            "id": 12345,
+            "title": "Has Id",
+            "release_date": "2018-01-01",
+            "genre_ids": [53],
+            "overview": "",
+        }
+    )
+
+    assert mapped is not None
+    assert mapped["tmdb_id"] == 12345
+
+
 def test_get_json_wraps_network_errors(monkeypatch) -> None:
     def raise_url_error(*args, **kwargs):
         raise tmdb_client.URLError("boom")
@@ -223,4 +238,50 @@ def test_get_json_wraps_network_errors(monkeypatch) -> None:
 
     with pytest.raises(tmdb_client.TmdbError):
         tmdb_client._get_json("https://api.themoviedb.org/3/discover/movie")
+
+
+def test_fetch_credits_sorts_by_order_and_limits(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/movie/42/credits" in url
+        return {
+            "cast": [
+                {"name": "Second", "character": "B", "order": 1, "profile_path": "/b.jpg"},
+                {"name": "First", "character": "A", "order": 0, "profile_path": None},
+                {"name": "", "character": "no name", "order": 2},
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    cast = tmdb_client.fetch_credits(42, kind="movie", limit=2)
+
+    assert [c["name"] for c in cast] == ["First", "Second"]
+    assert cast[1]["profile_path"] == "https://image.tmdb.org/t/p/w185/b.jpg"
+
+
+def test_fetch_trailer_key_prefers_official_youtube_trailer(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/tv/7/videos" in url
+        return {
+            "results": [
+                {"site": "YouTube", "type": "Trailer", "key": "unofficial", "official": False},
+                {"site": "YouTube", "type": "Trailer", "key": "official", "official": True},
+                {"site": "Vimeo", "type": "Trailer", "key": "ignored"},
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    assert tmdb_client.fetch_trailer_key(7, kind="series") == "official"
+
+
+def test_fetch_trailer_key_returns_none_when_no_trailer(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(tmdb_client, "_get_json", lambda url: {"results": []})
+
+    assert tmdb_client.fetch_trailer_key(1) is None
 

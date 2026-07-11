@@ -8,6 +8,7 @@ from . import auth, catalog, db, letterboxd_zip, llm_client, tmdb_client
 from .models import (
     AuthResponse,
     FeedbackRequest,
+    MovieDetails,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RecommendationHistoryResponse,
@@ -185,6 +186,22 @@ async def recommend_titles_from_zip(
         item.id = new_id
 
     return response
+
+
+@app.get("/movies/{tmdb_id}/details", response_model=MovieDetails)
+def movie_details(
+    tmdb_id: int, kind: str = "movie", user: sqlite3.Row = Depends(auth.get_current_user)
+) -> MovieDetails:
+    if not tmdb_client.is_configured():
+        raise HTTPException(status_code=503, detail="Catálogo de TMDb no configurado.")
+
+    try:
+        cast = tmdb_client.fetch_credits(tmdb_id, kind=kind)
+        trailer_key = tmdb_client.fetch_trailer_key(tmdb_id, kind=kind)
+    except tmdb_client.TmdbError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return MovieDetails(cast=cast, trailer_key=trailer_key)
 
 
 @app.post("/feedback", status_code=201)

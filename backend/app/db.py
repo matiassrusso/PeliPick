@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS recommendations_served (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER REFERENCES recommendation_sessions(id),
     user_id INTEGER NOT NULL REFERENCES users(id),
+    tmdb_id INTEGER,
     title TEXT NOT NULL,
     year INTEGER NOT NULL,
     kind TEXT NOT NULL,
@@ -94,6 +95,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE recommendations_served ADD COLUMN session_id INTEGER REFERENCES recommendation_sessions(id)"
         )
+    if not _has_column(conn, "recommendations_served", "tmdb_id"):
+        conn.execute("ALTER TABLE recommendations_served ADD COLUMN tmdb_id INTEGER")
 
 
 @contextmanager
@@ -245,13 +248,14 @@ def save_recommendations(session_id: int, user_id: int, mood: str, items: list[d
             cursor = conn.execute(
                 """
                 INSERT INTO recommendations_served
-                    (session_id, user_id, title, year, kind, why, match_score, tags, mood,
+                    (session_id, user_id, tmdb_id, title, year, kind, why, match_score, tags, mood,
                      poster_path, backdrop_path, overview, vote_average)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
                     user_id,
+                    item.get("tmdb_id"),
                     item["title"],
                     item["year"],
                     item["kind"],
@@ -286,7 +290,7 @@ def get_recommendation_history(user_id: int) -> list[dict]:
         recommendations = conn.execute(
             """
             SELECT
-                id, session_id, title, year, kind, why, match_score, tags, poster_path,
+                id, session_id, tmdb_id, title, year, kind, why, match_score, tags, poster_path,
                 backdrop_path, overview, vote_average
             FROM recommendations_served
             WHERE user_id = ? AND session_id IS NOT NULL
@@ -300,6 +304,7 @@ def get_recommendation_history(user_id: int) -> list[dict]:
         recommendations_by_session.setdefault(row["session_id"], []).append(
             {
                 "id": row["id"],
+                "tmdb_id": row["tmdb_id"],
                 "title": row["title"],
                 "year": row["year"],
                 "kind": row["kind"],

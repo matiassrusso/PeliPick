@@ -42,6 +42,40 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       lo que ya viene del catálogo mock (que no tiene id real de TMDb, ojo
       con eso al armar el fallback) | owner: claude | rama: `claude/cast-001`
 
+      **Progreso (por si se corta la sesión, retomar desde acá):**
+      - [x] Paso 1 (commit `2c3d5c2`): `tmdb_id` sumado a
+        `tmdb_client._map_result` (`raw.get("id")`), a `Recommendation`
+        (models.py), pasado en `recommender.py`, columna nueva en
+        `recommendations_served` con migración `ALTER TABLE` guardada en
+        try/except (DBs viejas no tienen la columna), `save_recommendations`
+        actualizado. Catálogo mock (`catalog.py`) no tiene `tmdb_id` — queda
+        `None` ahí, hay que manejarlo en el endpoint/frontend (no pedir
+        cast/tráiler si es `None`). 52/52 tests siguen en verde.
+      - [x] Paso 2 (commit `5072117`): tests de que `tmdb_id` viaja de
+        punta a punta (`test_tmdb_client.py`, `test_recommender.py`)
+      - [x] Paso 3 (commit `82ced0e`): `tmdb_client.fetch_credits(tmdb_id,
+        kind, limit=10)` y `fetch_trailer_key(tmdb_id, kind)` — cast
+        ordenado por `order`, tráiler prefiere YouTube+oficial, `None` si
+        no hay. Sin caché (no es hot path como discover). Con tests.
+      - [x] Paso 4 (commit `56d470d`): **backend completo.**
+        `GET /movies/{tmdb_id}/details?kind=movie` (`MovieDetails` en
+        models.py: `cast: list[CastMember]`, `trailer_key: str | None`),
+        requiere auth, `503` si no hay `TMDB_API_KEY`, `502` si TMDb falla.
+        60/60 tests en verde. **El backend de cast-001 ya se puede probar
+        de punta a punta sin el frontend** (curl/Postman/TestClient).
+      - [x] Post-merge con `historial-001`: reconciliado en `db.py`
+        (`save_recommendations` ahora lleva `session_id` + `tmdb_id`,
+        `get_recommendation_history` también devuelve `tmdb_id` por
+        recomendación, migraciones unificadas en `_run_migrations`)
+      - [ ] Paso 5 (siguiente): frontend — el modal en `Recommend.tsx`
+        (y ahora también `History.tsx`) pide
+        `GET /movies/{rec.tmdb_id}/details?kind={rec.kind}` al abrirse,
+        solo si `rec.tmdb_id` no es null (el catálogo mock no tiene id
+        real). Mostrar cast (foto+nombre+personaje) y embed/link del
+        tráiler de YouTube (`https://youtube.com/watch?v={key}`)
+      - [ ] Paso 6: docs (`api.md`, `mvp-status.md`, `architecture.md`)
+      - [ ] Paso 7: build de frontend + verificación en browser
+
 ## Blocked
 
 (vacío)

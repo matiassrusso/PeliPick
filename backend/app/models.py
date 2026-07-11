@@ -16,6 +16,7 @@ class RecommendRequest(BaseModel):
 
 class Recommendation(BaseModel):
     id: int | None = None
+    tmdb_id: int | None = None
     title: str
     year: int
     kind: str
@@ -72,3 +73,14 @@ class PasswordResetConfirmRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     recommendation_id: int
     status: Literal["interested", "not_interested", "seen"]
+
+
+class CastMember(BaseModel):
+    name: str
+    character: str = ""
+    profile_path: str | None = None
+
+
+class MovieDetails(BaseModel):
+    cast: list[CastMember]
+    trailer_key: str | None = None
