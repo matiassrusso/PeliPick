@@ -1,5 +1,28 @@
 # Build Log
 
+## 2026-07-11 (agente de IA)
+
+### Gemini conectado
+
+- se evaluó pagar $5 de créditos en OpenAI; se optó por arrancar gratis con
+  Gemini (`gemini-2.0-flash`, free tier de Google AI Studio, sin tarjeta) y
+  reevaluar OpenAI solo si la calidad no alcanza o se pega el límite
+- `backend/app/llm_client.py`: cliente stdlib `urllib` (mismo patrón que
+  `tmdb_client.py`, sin sumar SDK), pide `responseSchema` para JSON
+  estructurado
+- el agente recibe los candidatos ya filtrados por el heurístico + TMDb,
+  elige y ordena como máximo 5 y reescribe resumen/razones — nunca inventa
+  títulos ni metadata (se descarta cualquier pick que no matchee por título
+  exacto contra la lista)
+- fallback al resultado heurístico si Gemini falla, no está configurada, o
+  devuelve picks fuera de la lista de candidatos — mismo patrón que TMDb
+- 7 tests nuevos (25 → 32), mockeando la llamada HTTP a mano
+- doc nueva: [gemini-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
+- se probó contra la API real con la key del usuario: `gemini-2.0-flash`
+  devolvía cuota 0 en el free tier para esa key puntual, se cambió a
+  `gemini-flash-latest` y ahí sí respondió — verificado end-to-end
+  (reordena picks, reescribe resumen y razones en base al historial real)
+
 ## 2026-07-11
 
 ### Persistencia, login y feedback

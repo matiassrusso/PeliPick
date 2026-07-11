@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.llm_client import LlmError
 from backend.app.tmdb_client import TmdbError
 
 client = TestClient(app)
@@ -125,6 +126,41 @@ def test_recommend_csv_carries_poster_and_overview_fields(monkeypatch) -> None:
     assert item["backdrop_path"] == "https://image.tmdb.org/t/p/w780/backdrop.jpg"
     assert item["overview"] == "A moody thriller."
     assert item["vote_average"] == 7.4
+
+
+def test_recommend_csv_uses_gemini_refinement_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+
+    def fake_refine(ratings, mood, heuristic):
+        picked = heuristic.recommendations[0].model_copy(update={"why": "elegido por el agente"})
+        return heuristic.model_copy(update={"taste_summary": "resumen del agente", "recommendations": [picked]})
+
+    monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", fake_refine)
+
+    headers = _auth_headers("geminiok")
+    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["taste_summary"] == "resumen del agente"
+    assert len(body["recommendations"]) == 1
+    assert body["recommendations"][0]["why"] == "elegido por el agente"
+    assert body["recommendations"][0]["id"] is not None
+
+
+def test_recommend_csv_falls_back_to_heuristic_when_gemini_fails(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+
+    def raise_llm_error(ratings, mood, heuristic):
+        raise LlmError("boom")
+
+    monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", raise_llm_error)
+
+    headers = _auth_headers("geminifallback")
+    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+
+    assert response.status_code == 200
+    assert response.json()["recommendations"]
 
 
 def test_feedback_rejects_invalid_status() -> None:

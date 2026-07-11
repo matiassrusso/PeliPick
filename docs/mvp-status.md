@@ -18,7 +18,10 @@
 - catálogo real con `TMDb` (`/discover/movie`, mapeo género + overview a tags
   propios, fallback al mock si falla o no hay key), con póster/backdrop/
   overview/rating viajando hasta el frontend
-- tests de backend (25, incluyendo auth, feedback y TMDb mockeado)
+- agente de IA con `Gemini` (free tier, sin pagar OpenAI de entrada): refina
+  el resumen de gusto y el orden/razones de los picks ya filtrados por el
+  heurístico, con fallback al resultado heurístico si falla o no hay key
+- tests de backend (32, incluyendo auth, feedback, TMDb y Gemini mockeados)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (CSV + mood + resultados con feedback) / NotFound
@@ -36,7 +39,9 @@
   - el mapeo género/overview → tags es heurístico y coarse, sin nuance real
     de tono/ritmo
   - solo películas, no series
-  - sin agente de IA todavía (sintetizar gusto y rerankear con LLM)
+  - el agente de Gemini reordena y reescribe texto sobre esos candidatos,
+    pero no rescorea ni trae candidatos propios — sigue acotado a lo que
+    ya filtró el heurístico
 
 - UX web
   - diseño generado con otra IA (plataforma "Manus"), adaptado a mano: nos
@@ -50,8 +55,6 @@
 
 ## Falta para un MVP más serio
 
-- agente de IA conectado (sintetizar gusto desde reviews, rerankear picks —
-  necesita API key de un proveedor LLM)
 - perfil de gusto visual (radar de géneros, heatmap de décadas, directores/
   actores favoritos) — necesita matchear cada título del CSV del usuario
   contra TMDb, no es trivial con exports grandes

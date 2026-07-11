@@ -5,12 +5,13 @@ Motor de recomendaciones de pelis y series basado en el gusto real de una person
 ## Estado actual
 
 - `backend` con FastAPI: DB en SQLite, login real, catálogo de TMDb (con
-  fallback a mock), feedback explícito por pick
+  fallback a mock), agente de IA con Gemini (refina resumen y picks, con
+  fallback al heurístico), feedback explícito por pick
 - `frontend` con React + Vite + Tailwind: tema "cinematic", páginas Home /
   Login / Recommend (CSV + mood + resultados) / NotFound
 
-Todavía no hay agente de IA (falta key de LLM) ni scraping de Letterboxd
-(solo CSV export). Ver [mvp-status.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\mvp-status.md) para el detalle.
+Todavía no hay scraping de Letterboxd (solo CSV export). Ver
+[mvp-status.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\mvp-status.md) para el detalle.
 
 ## Estructura
 
@@ -19,6 +20,7 @@ Todavía no hay agente de IA (falta key de LLM) ni scraping de Letterboxd
 - [Arquitectura actual](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\architecture.md)
 - [Formato CSV soportado](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\csv-format.md)
 - [Setup de TMDb](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\tmdb-setup.md)
+- [Setup de Gemini](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
 - [API actual](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\api.md)
 - [Estado del MVP](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\mvp-status.md)
 - [Build log](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\build-log.md)
@@ -56,10 +58,10 @@ Nota:
 
 - uso `8001` por default porque en esta máquina `8000` ya estaba ocupado por otro backend
 - para el catálogo real necesitás `TMDB_API_KEY` en `backend/.env` — ver [tmdb-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\tmdb-setup.md)
+- para el agente de IA necesitás `GEMINI_API_KEY` (free tier) en `backend/.env` — ver [gemini-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
 - hoy soporta CSV simple y `ratings.csv`/`reviews.csv` reales de Letterboxd; no todo export todavía
 
 ## Próximo paso lógico
 
-- agente de IA (sintetizar gusto, rerankear picks) cuando haya key de LLM
 - perfil de gusto visual e historial de sesiones
 - scraping o import automático desde el username de Letterboxd

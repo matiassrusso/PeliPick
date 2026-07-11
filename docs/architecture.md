@@ -7,8 +7,10 @@ Hoy `PeliPick` es una vertical slice local con dos partes:
 - `frontend` en `React + TypeScript + Vite`
 - `backend` en `FastAPI`
 
-Ya hay base de datos (`SQLite`), login y catálogo real (`TMDb`, con fallback a
-mock). No hay integración real con Letterboxd todavía (solo CSV export).
+Ya hay base de datos (`SQLite`), login, catálogo real (`TMDb`, con fallback a
+mock) y un agente de IA (`Gemini`) que refina el resumen de gusto y el orden/
+razones de los picks. No hay integración real con Letterboxd todavía (solo
+CSV export).
 
 ## Flujo actual
 
@@ -19,6 +21,8 @@ mock). No hay integración real con Letterboxd todavía (solo CSV export).
 5. El backend resume el gusto del usuario.
 6. El backend trae candidatos de `TMDb` (o cae al catálogo mock si no hay key
    configurada o TMDb falla) y los scorea.
+6.5. Si hay `GEMINI_API_KEY`, el agente reordena esos picks y reescribe el
+   resumen y las razones (o cae de vuelta al resultado heurístico si falla).
 7. El backend persiste los ratings importados y las recomendaciones servidas.
 8. El backend devuelve hasta 5 recomendaciones explicadas.
 9. El frontend renderiza el resumen y los picks, con botones de feedback por pick.
@@ -67,6 +71,7 @@ Piezas actuales:
 - [backend/app/db.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
 - [backend/app/auth.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\auth.py): hashing de password (PBKDF2, stdlib) y dependencia de sesión
 - [backend/app/tmdb_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\tmdb_client.py): cliente TMDb (stdlib `urllib`), mapea género + overview a tags propios
+- [backend/app/llm_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\llm_client.py): cliente Gemini (stdlib `urllib`), refina resumen y picks del heurístico
 
 ## Decisiones deliberadas
 
@@ -82,6 +87,11 @@ Piezas actuales:
   de fetchear y cachear `/genre/movie/list`
 - si TMDb falla o no está configurada, cae al catálogo mock en vez de romper
   la respuesta — ver `docs/tmdb-setup.md`
+- agente de IA con `Gemini` (free tier) en vez de pagar OpenAI de entrada —
+  ver `docs/gemini-setup.md`; el LLM solo reordena/reescribe texto sobre
+  candidatos ya filtrados por TMDb, nunca inventa títulos ni metadata
+- si Gemini falla, no está configurada, o devuelve picks fuera de la lista de
+  candidatos, cae al resultado heurístico sin romper la respuesta
 - del zip de UI generado externamente, se descartó todo lo que las páginas
   reales no usaban (Radix, shadcn/ui, CVA, `react-hook-form`, `recharts`) en
   vez de portarlo "porque estaba" — se verificó con `grep` qué importaba cada
@@ -92,8 +102,9 @@ Piezas actuales:
 - catálogo real de `TMDb`, pero el mapeo género/overview → tags es heurístico
   y coarse (no hay nuance real de tono/ritmo todavía)
 - solo películas del catálogo real, no series (`/discover/tv` queda pendiente)
-- sin caché de resultados de TMDb
-- no hay agente de IA conectado (sin API key de LLM todavía)
+- sin caché de resultados de TMDb ni de Gemini
+- el agente de IA reordena y reescribe texto, no rescorea ni trae candidatos
+  propios — sigue acotado a lo que ya filtró el heurístico
 - no hay scraping de Letterboxd por username, solo CSV export manual
 - no parsea todavía todas las variantes de export de Letterboxd
 - sin recuperación de contraseña, sin rate limiting de login
@@ -104,7 +115,5 @@ Piezas actuales:
 - historial de sesiones de recomendación revisitables
 - cast y tráiler en el detalle de película
 - series en el catálogo real (`/discover/tv`)
-- agente de IA (LLM) para sintetizar gusto y rerankear picks, una vez haya
-  API key
 - scraping o import automático desde el username de Letterboxd, como
   alternativa al CSV manual

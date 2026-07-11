@@ -15,3 +15,9 @@ def no_real_tmdb(monkeypatch):
     # backend/.env may hold a real TMDB_API_KEY on dev machines; tests must
     # not depend on live network calls or non-deterministic TMDb results.
     monkeypatch.delenv("TMDB_API_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_real_gemini(monkeypatch):
+    # same deal as TMDB_API_KEY, but for the Gemini refine step.
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)

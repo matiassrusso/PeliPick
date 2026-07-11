@@ -4,7 +4,7 @@ import sqlite3
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import catalog, db, tmdb_client
+from . import catalog, db, llm_client, tmdb_client
 from .auth import create_token, get_current_user, hash_password, verify_password
 from .csv_ingest import parse_ratings_csv
 from .models import (
@@ -97,6 +97,12 @@ def recommend_titles_from_csv(
             candidates = catalog.CATALOG
 
     response = recommend(ratings, payload.mood, catalog=candidates)
+
+    if llm_client.is_configured():
+        try:
+            response = llm_client.refine_recommendations(ratings, payload.mood, response)
+        except llm_client.LlmError:
+            pass
 
     db.save_rated_items(
         user["id"], [(item.title, item.rating, item.review) for item in ratings]
