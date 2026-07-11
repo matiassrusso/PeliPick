@@ -33,7 +33,9 @@ todavía.
 8. El backend devuelve hasta 5 recomendaciones explicadas.
 9. El frontend renderiza el resumen y los picks, con botones de feedback por pick.
 10. El feedback (me interesa / no me interesa / ya la vi) se guarda asociado al usuario y a la recomendación.
-11. El usuario puede volver después a `/history` y revisitar sesiones pasadas sin resubir el zip.
+11. El modal de un pick de TMDb pide su reparto y tráiler al abrirse; si ese
+    request falla o el pick es del catálogo mock, conserva el detalle base.
+12. El usuario puede volver después a `/history` y revisitar sesiones pasadas sin resubir el zip.
 
 ## Frontend
 
@@ -48,7 +50,7 @@ Páginas:
 
 - [frontend/src/pages/Home.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Home.tsx): landing
 - [frontend/src/pages/Login.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Login.tsx): login/registro
-- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): upload del zip + mood + resultados + feedback, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
+- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): upload del zip + mood + resultados + feedback y detalle de cast/tráiler, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
 - [frontend/src/pages/History.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\History.tsx): historial de sesiones de recomendación revisitables
 - [frontend/src/pages/NotFound.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\NotFound.tsx)
 
@@ -147,7 +149,5 @@ Piezas actuales:
 
 - perfil de gusto visual (necesita matchear el historial del usuario contra TMDb)
 - historial de sesiones de recomendación revisitables
-- cast y tráiler en el detalle de película — necesita guardar el id real
-  de TMDb por título (hoy no viaja por el pipeline)
 - scraping o import automático desde el username de Letterboxd, como
   alternativa al zip manual

@@ -33,6 +33,9 @@
 - historial revisitables de sesiones: cada request de `/recommend/zip` queda
   guardado como sesión y se puede volver a ver desde `/history` sin resubir
   el zip
+- modal de detalle con reparto y link al tráiler para recomendaciones de
+  TMDb; si TMDb no está disponible o el pick viene del catálogo mock, el
+  resto del detalle sigue funcionando
 - tests de backend (55, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd, rate
   limiting/reset de contraseña, y la caché de TMDb)
@@ -65,18 +68,12 @@
     Drizzle/MySQL, el auth OAuth y el LLM de esa plataforma
   - la página de historial ya está, pero es una primera pasada: revisita
     picks y resumen; no recupera el zip original ni analytics más finos
-  - el modal de detalle de película no muestra cast ni tráiler todavía —
-    el backend ya está (`GET /movies/{tmdb_id}/details`, `tmdb_id` viaja
-    por todo el pipeline), falta conectar el frontend
 
 ## Falta para un MVP más serio
 
 - perfil de gusto visual (radar de géneros, heatmap de décadas, directores/
   actores favoritos) — necesita matchear cada título del CSV del usuario
   contra TMDb, no es trivial con exports grandes
-- cast y tráiler en el modal: falta el fetch desde el frontend al abrirse
-  (`GET /movies/{tmdb_id}/details?kind=...`, ya implementado y testeado
-  en el backend — ver `docs/api.md`)
 - import de historial por username de Letterboxd (scraping), como alternativa
   al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - soportar `Tags` de usuario del zip cuando estén presentes

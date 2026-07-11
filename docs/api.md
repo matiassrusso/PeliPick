@@ -164,6 +164,7 @@ file: <el .zip como binario>
   "recommendations": [
     {
       "id": 1,
+      "tmdb_id": 808,
       "title": "Perfect Blue",
       "year": 1997,
       "kind": "movie",
@@ -200,6 +201,7 @@ usuario autenticado, ordenadas de la más nueva a la más vieja.
       "recommendations": [
         {
           "id": 9,
+          "tmdb_id": 808,
           "title": "Perfect Blue",
           "year": 1997,
           "kind": "movie",
@@ -222,8 +224,8 @@ Si el usuario no tiene historial todavía, devuelve `200` con `sessions: []`.
 ## `GET /movies/{tmdb_id}/details`
 
 Requiere auth. Devuelve cast (top 10) y key de YouTube del tráiler para una
-película o serie de TMDb. **No implementado en el frontend todavía** — el
-backend está listo y testeado, pero el modal de detalle no lo pide todavía.
+película o serie de TMDb. El modal de detalle pide este endpoint al abrirse
+para recomendaciones con `tmdb_id`.
 
 ### Query params
 
