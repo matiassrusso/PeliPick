@@ -36,7 +36,7 @@
 - modal de detalle con reparto y link al tráiler para recomendaciones de
   TMDb; si TMDb no está disponible o el pick viene del catálogo mock, el
   resto del detalle sigue funcionando
-- tests de backend (55, incluyendo auth, feedback, historial, TMDb, Gemini, el
+- tests de backend (63, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd, rate
   limiting/reset de contraseña, y la caché de TMDb)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
