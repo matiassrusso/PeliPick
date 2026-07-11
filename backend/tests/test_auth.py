@@ -1,4 +1,4 @@
-from fastapi.testclient import TestClient
+﻿from fastapi.testclient import TestClient
 
 from backend.app.main import app
 
@@ -52,6 +52,43 @@ def test_login_rejects_unknown_username() -> None:
     assert response.status_code == 401
 
 
+def test_login_rate_limits_after_repeated_failures(monkeypatch) -> None:
+    client.post(
+        "/auth/register", json={"username": "ratelimit", "password": "supersecret"}
+    )
+    monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 1_000)
+
+    assert (
+        client.post(
+            "/auth/login", json={"username": "ratelimit", "password": "wrongpassword"}
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/auth/login", json={"username": "ratelimit", "password": "wrongpassword"}
+        ).status_code
+        == 401
+    )
+
+    locked = client.post(
+        "/auth/login", json={"username": "ratelimit", "password": "wrongpassword"}
+    )
+    assert locked.status_code == 429
+    assert "30s" in locked.json()["detail"]
+
+    blocked = client.post(
+        "/auth/login", json={"username": "ratelimit", "password": "supersecret"}
+    )
+    assert blocked.status_code == 429
+
+    monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 1_031)
+    unblocked = client.post(
+        "/auth/login", json={"username": "ratelimit", "password": "supersecret"}
+    )
+    assert unblocked.status_code == 200
+
+
 def test_recommend_zip_requires_auth() -> None:
     response = client.post(
         "/recommend/zip",
@@ -79,3 +116,64 @@ def test_auth_me_rejects_missing_or_invalid_token() -> None:
         client.get("/auth/me", headers={"Authorization": "Bearer nonsense"}).status_code
         == 401
     )
+
+
+def test_forgot_password_returns_token_and_reset_invalidates_old_sessions() -> None:
+    register = client.post(
+        "/auth/register", json={"username": "resetuser", "password": "supersecret"}
+    )
+    old_token = register.json()["token"]
+
+    forgot = client.post("/auth/forgot-password", json={"username": "resetuser"})
+    assert forgot.status_code == 200
+    reset_token = forgot.json()["reset_token"]
+    assert reset_token
+
+    response = client.post(
+        "/auth/reset-password",
+        json={"token": reset_token, "password": "newersecret"},
+    )
+    assert response.status_code == 204
+
+    assert (
+        client.get("/auth/me", headers={"Authorization": f"Bearer {old_token}"}).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/auth/login", json={"username": "resetuser", "password": "supersecret"}
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/auth/login", json={"username": "resetuser", "password": "newersecret"}
+        ).status_code
+        == 200
+    )
+
+
+def test_forgot_password_is_generic_for_unknown_username() -> None:
+    response = client.post("/auth/forgot-password", json={"username": "ghost"})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "reset_token": None}
+
+
+def test_reset_password_rejects_expired_token(monkeypatch) -> None:
+    client.post("/auth/register", json={"username": "expired", "password": "supersecret"})
+    monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 2_000)
+    reset_token = client.post(
+        "/auth/forgot-password", json={"username": "expired"}
+    ).json()["reset_token"]
+
+    monkeypatch.setattr(
+        "backend.app.main.auth.now_ts",
+        lambda: 2_000 + 3_600 + 1,
+    )
+    response = client.post(
+        "/auth/reset-password",
+        json={"token": reset_token, "password": "newersecret"},
+    )
+
+    assert response.status_code == 400

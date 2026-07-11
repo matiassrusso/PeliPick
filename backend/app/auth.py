@@ -1,13 +1,15 @@
-import hashlib
+﻿import hashlib
 import hmac
 import secrets
 import sqlite3
+import time
 
 from fastapi import Header, HTTPException
 
 from . import db
 
 PBKDF2_ITERATIONS = 260_000
+RESET_TOKEN_TTL_SECONDS = 60 * 60
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -27,13 +29,32 @@ def create_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def create_password_reset_token() -> tuple[str, str]:
+    token = create_token()
+    return token, hash_token(token)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def now_ts() -> int:
+    return int(time.time())
+
+
+def login_lock_seconds(failed_attempts: int) -> int:
+    if failed_attempts < 3:
+        return 0
+    return min(30 * (2 ** (failed_attempts - 3)), 15 * 60)
+
+
 def get_current_user(authorization: str | None = Header(default=None)) -> sqlite3.Row:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Falta autenticación.")
+        raise HTTPException(status_code=401, detail="Falta autenticaciÃ³n.")
 
     token = authorization.removeprefix("Bearer ").strip()
     user = db.get_user_by_token(token)
     if user is None:
-        raise HTTPException(status_code=401, detail="Sesión inválida o expirada.")
+        raise HTTPException(status_code=401, detail="SesiÃ³n invÃ¡lida o expirada.")
 
     return user

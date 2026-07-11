@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -18,6 +18,20 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+    username TEXT PRIMARY KEY,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    expires_at INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -112,6 +126,72 @@ def get_user_by_token(token: str) -> sqlite3.Row | None:
 def delete_session(token: str) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+
+def delete_sessions_for_user(user_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+
+
+def update_user_password(user_id: int, password_hash: str, password_salt: str) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?",
+            (password_hash, password_salt, user_id),
+        )
+
+
+def get_login_attempt(username: str) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT * FROM login_attempts WHERE username = ?", (username,)
+        ).fetchone()
+
+
+def save_login_attempt(username: str, failed_attempts: int, locked_until: int) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO login_attempts (username, failed_attempts, locked_until)
+            VALUES (?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                failed_attempts = excluded.failed_attempts,
+                locked_until = excluded.locked_until
+            """,
+            (username, failed_attempts, locked_until),
+        )
+
+
+def clear_login_attempts(username: str) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM login_attempts WHERE username = ?", (username,))
+
+
+def save_password_reset_token(user_id: int, token_hash: str, expires_at: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+            (token_hash, user_id, expires_at),
+        )
+
+
+def get_password_reset_token(token_hash: str) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT password_reset_tokens.*, users.username
+            FROM password_reset_tokens
+            JOIN users ON users.id = password_reset_tokens.user_id
+            WHERE password_reset_tokens.token_hash = ?
+            """,
+            (token_hash,),
+        ).fetchone()
+
+
+def delete_password_reset_tokens_for_user(user_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
 
 
 def save_rated_items(user_id: int, items: list[tuple[str, float, str]]) -> None:

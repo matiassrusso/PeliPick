@@ -1,4 +1,4 @@
-from typing import Literal
+﻿from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -41,6 +41,20 @@ class UserCredentials(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     username: str
+
+
+class PasswordResetRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=50)
+
+
+class PasswordResetStartResponse(BaseModel):
+    status: Literal["ok"]
+    reset_token: str | None = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
 
 
 class FeedbackRequest(BaseModel):
