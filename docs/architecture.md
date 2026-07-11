@@ -26,21 +26,31 @@ mock). No hay integración real con Letterboxd todavía (solo CSV export).
 
 ## Frontend
 
-Archivo principal:
+Stack: `React + TypeScript + Vite + Tailwind v4 + Framer Motion + wouter`.
+El tema visual ("cinematic", ámbar/dorado sobre negro) y las páginas se
+generaron con otra IA (plataforma "Manus", que traía su propio server
+Node/tRPC/Drizzle) y se adaptaron a mano: nos quedamos con la UI, tiramos su
+backend entero y reconectamos las páginas a nuestro FastAPI vía `fetch` plano
+(no tRPC).
 
-- [frontend/src/App.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\App.tsx)
+Páginas:
 
-Responsabilidades actuales:
+- [frontend/src/pages/Home.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Home.tsx): landing
+- [frontend/src/pages/Login.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Login.tsx): login/registro
+- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): CSV + mood + resultados + feedback, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
+- [frontend/src/pages/NotFound.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\NotFound.tsx)
 
-- mostrar propuesta de valor
-- recibir `username`, `mood` y `CSV`
-- dejar pegar texto o subir archivo
-- llamar `POST /recommend/csv`
-- renderizar recomendaciones
+Estado compartido:
 
-Estilo principal:
+- [frontend/src/hooks/useAuth.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\hooks\useAuth.tsx): Context de auth (token en `localStorage`, valida contra `GET /auth/me` al cargar)
 
-- [frontend/src/styles.css](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\styles.css)
+Deliberadamente no se portaron los componentes `shadcn/ui`/Radix del diseño
+original: ninguna de las páginas reales los usaba (confirmado leyendo el
+código fuente), todo está armado con clases de Tailwind directas.
+
+Estilo:
+
+- [frontend/src/index.css](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\index.css)
 
 ## Backend
 
@@ -72,6 +82,10 @@ Piezas actuales:
   de fetchear y cachear `/genre/movie/list`
 - si TMDb falla o no está configurada, cae al catálogo mock en vez de romper
   la respuesta — ver `docs/tmdb-setup.md`
+- del zip de UI generado externamente, se descartó todo lo que las páginas
+  reales no usaban (Radix, shadcn/ui, CVA, `react-hook-form`, `recharts`) en
+  vez de portarlo "porque estaba" — se verificó con `grep` qué importaba cada
+  página antes de decidir
 
 ## Limitaciones actuales
 
@@ -86,6 +100,9 @@ Piezas actuales:
 
 ## Próxima arquitectura probable
 
+- perfil de gusto visual (necesita matchear el CSV del usuario contra TMDb)
+- historial de sesiones de recomendación revisitables
+- cast y tráiler en el detalle de película
 - series en el catálogo real (`/discover/tv`)
 - agente de IA (LLM) para sintetizar gusto y rerankear picks, una vez haya
   API key

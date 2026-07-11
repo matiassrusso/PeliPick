@@ -110,6 +110,10 @@ def recommend(
                 why=", y ".join(reasons) + ".",
                 match_score=max(1, min(score, 99)),
                 tags=item["tags"],
+                poster_path=item.get("poster_path"),
+                backdrop_path=item.get("backdrop_path"),
+                overview=item.get("overview", ""),
+                vote_average=item.get("vote_average"),
             )
         )
 

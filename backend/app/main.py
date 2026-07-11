@@ -58,6 +58,11 @@ def login(payload: UserCredentials) -> AuthResponse:
     return AuthResponse(token=token, username=user["username"])
 
 
+@app.get("/auth/me")
+def me(user: sqlite3.Row = Depends(get_current_user)) -> dict[str, str]:
+    return {"username": user["username"]}
+
+
 @app.post("/auth/logout", status_code=204)
 def logout(authorization: str | None = Header(default=None)) -> None:
     if authorization and authorization.startswith("Bearer "):
@@ -99,10 +104,7 @@ def recommend_titles_from_csv(
     inserted_ids = db.save_recommendations(
         user["id"],
         payload.mood,
-        [
-            (item.title, item.year, item.kind, item.why, item.match_score, item.tags)
-            for item in response.recommendations
-        ],
+        [item.model_dump() for item in response.recommendations],
     )
     for item, new_id in zip(response.recommendations, inserted_ids):
         item.id = new_id

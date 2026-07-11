@@ -27,6 +27,10 @@ class Recommendation(BaseModel):
     why: str
     match_score: int
     tags: list[str]
+    poster_path: str | None = None
+    backdrop_path: str | None = None
+    overview: str = ""
+    vote_average: float | None = None
 
 
 class RecommendResponse(BaseModel):

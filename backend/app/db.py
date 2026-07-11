@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS recommendations_served (
     match_score INTEGER NOT NULL,
     tags TEXT NOT NULL,
     mood TEXT NOT NULL DEFAULT '',
+    poster_path TEXT,
+    backdrop_path TEXT,
+    overview TEXT NOT NULL DEFAULT '',
+    vote_average REAL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -120,21 +124,31 @@ def save_rated_items(user_id: int, items: list[tuple[str, float, str]]) -> None:
         )
 
 
-def save_recommendations(
-    user_id: int,
-    mood: str,
-    items: list[tuple[str, int, str, str, int, list[str]]],
-) -> list[int]:
+def save_recommendations(user_id: int, mood: str, items: list[dict]) -> list[int]:
     ids: list[int] = []
     with get_connection() as conn:
-        for title, year, kind, why, match_score, tags in items:
+        for item in items:
             cursor = conn.execute(
                 """
                 INSERT INTO recommendations_served
-                    (user_id, title, year, kind, why, match_score, tags, mood)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (user_id, title, year, kind, why, match_score, tags, mood,
+                     poster_path, backdrop_path, overview, vote_average)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, title, year, kind, why, match_score, json.dumps(tags), mood),
+                (
+                    user_id,
+                    item["title"],
+                    item["year"],
+                    item["kind"],
+                    item["why"],
+                    item["match_score"],
+                    json.dumps(item["tags"]),
+                    mood,
+                    item.get("poster_path"),
+                    item.get("backdrop_path"),
+                    item.get("overview", ""),
+                    item.get("vote_average"),
+                ),
             )
             ids.append(cursor.lastrowid)
     return ids

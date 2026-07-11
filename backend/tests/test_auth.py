@@ -59,3 +59,22 @@ def test_recommend_csv_requires_auth() -> None:
     )
 
     assert response.status_code == 401
+
+
+def test_auth_me_returns_username_for_valid_token() -> None:
+    client.post("/auth/register", json={"username": "meuser", "password": "supersecret"})
+    login = client.post("/auth/login", json={"username": "meuser", "password": "supersecret"})
+    token = login.json()["token"]
+
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "meuser"
+
+
+def test_auth_me_rejects_missing_or_invalid_token() -> None:
+    assert client.get("/auth/me").status_code == 401
+    assert (
+        client.get("/auth/me", headers={"Authorization": "Bearer nonsense"}).status_code
+        == 401
+    )

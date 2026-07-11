@@ -16,8 +16,12 @@
   servidas y feedback
 - feedback explícito por pick (me interesa / no me interesa / ya la vi)
 - catálogo real con `TMDb` (`/discover/movie`, mapeo género + overview a tags
-  propios, fallback al mock si falla o no hay key)
-- tests de backend (21, incluyendo auth, feedback y TMDb mockeado)
+  propios, fallback al mock si falla o no hay key), con póster/backdrop/
+  overview/rating viajando hasta el frontend
+- tests de backend (25, incluyendo auth, feedback y TMDb mockeado)
+- pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
+  `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
+  Recommend (CSV + mood + resultados con feedback) / NotFound
 - build verificado de frontend
 
 ## Hecho pero verde
@@ -35,13 +39,24 @@
   - sin agente de IA todavía (sintetizar gusto y rerankear con LLM)
 
 - UX web
-  - ya comunica el producto y tiene login + feedback
-  - todavía sin pasada de diseño (esa es la próxima fase, después de esto)
+  - diseño generado con otra IA (plataforma "Manus"), adaptado a mano: nos
+    quedamos con la UI/tema y descartamos enteros el server Node/tRPC/
+    Drizzle/MySQL, el auth OAuth y el LLM de esa plataforma
+  - páginas de perfil de gusto (gráficos) e historial de sesiones quedaron
+    afuera de esta pasada — el diseño original las asumía, pero necesitan
+    backend nuevo (ver abajo)
+  - el modal de detalle de película no tiene cast ni tráiler (pediría un
+    fetch extra por película a TMDb)
 
 ## Falta para un MVP más serio
 
 - agente de IA conectado (sintetizar gusto desde reviews, rerankear picks —
   necesita API key de un proveedor LLM)
+- perfil de gusto visual (radar de géneros, heatmap de décadas, directores/
+  actores favoritos) — necesita matchear cada título del CSV del usuario
+  contra TMDb, no es trivial con exports grandes
+- historial de sesiones de recomendación revisitables
+- cast y tráiler en el detalle de cada película
 - series en el catálogo real (`/discover/tv`)
 - caché de resultados de TMDb si el uso crece
 - import de historial por username de Letterboxd (scraping), como alternativa

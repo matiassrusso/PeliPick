@@ -23,6 +23,9 @@ def test_fetch_candidates_maps_genres_and_overview_to_tags(monkeypatch) -> None:
                     "release_date": "2020-05-01",
                     "genre_ids": [53],  # Thriller -> psychological, dark
                     "overview": "A slow and quiet character study.",
+                    "poster_path": "/poster123.jpg",
+                    "backdrop_path": "/backdrop456.jpg",
+                    "vote_average": 8.1,
                 },
                 {
                     "title": "No Year",
@@ -51,7 +54,25 @@ def test_fetch_candidates_maps_genres_and_overview_to_tags(monkeypatch) -> None:
     assert {"psychological", "dark", "slow", "quiet", "melancholic", "intimate"} <= set(
         item["tags"]
     )
+    assert item["poster_path"] == "https://image.tmdb.org/t/p/w500/poster123.jpg"
+    assert item["backdrop_path"] == "https://image.tmdb.org/t/p/w780/backdrop456.jpg"
+    assert item["vote_average"] == 8.1
     assert "with_genres=35" in calls[0]  # "funny" mood biases toward Comedy
+
+
+def test_map_result_handles_missing_images() -> None:
+    mapped = tmdb_client._map_result(
+        {
+            "title": "No Poster",
+            "release_date": "2018-01-01",
+            "genre_ids": [53],
+            "overview": "",
+        }
+    )
+
+    assert mapped is not None
+    assert mapped["poster_path"] is None
+    assert mapped["backdrop_path"] is None
 
 
 def test_get_json_wraps_network_errors(monkeypatch) -> None:

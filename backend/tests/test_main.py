@@ -93,6 +93,40 @@ def test_recommend_csv_falls_back_to_mock_catalog_when_tmdb_fails(monkeypatch) -
     assert response.json()["recommendations"]
 
 
+def test_recommend_csv_carries_poster_and_overview_fields(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_fetch_candidates(mood: str):
+        return [
+            {
+                "title": "Custom Movie",
+                "year": 2021,
+                "kind": "movie",
+                "tags": ["psychological", "dark"],
+                "poster_path": "https://image.tmdb.org/t/p/w500/poster.jpg",
+                "backdrop_path": "https://image.tmdb.org/t/p/w780/backdrop.jpg",
+                "overview": "A moody thriller.",
+                "vote_average": 7.4,
+            }
+        ]
+
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_candidates", fake_fetch_candidates)
+
+    headers = _auth_headers("posterfields")
+    response = client.post(
+        "/recommend/csv",
+        headers=headers,
+        json={"csv_content": "Name,Rating,Review\nWhiplash,4.5,psychological and intense"},
+    )
+
+    assert response.status_code == 200
+    item = response.json()["recommendations"][0]
+    assert item["poster_path"] == "https://image.tmdb.org/t/p/w500/poster.jpg"
+    assert item["backdrop_path"] == "https://image.tmdb.org/t/p/w780/backdrop.jpg"
+    assert item["overview"] == "A moody thriller."
+    assert item["vote_average"] == 7.4
+
+
 def test_feedback_rejects_invalid_status() -> None:
     headers = _auth_headers("badstatus")
     picks = client.post(

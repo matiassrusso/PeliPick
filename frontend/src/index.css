@@ -1,0 +1,246 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotateX(0deg); }
+  50% { transform: translateY(-12px) rotateX(2deg); }
+}
+
+@theme inline {
+  /* Cinematic color tokens */
+  --color-amber: oklch(0.72 0.14 55);
+  --color-amber-dim: oklch(0.60 0.12 55);
+  --color-amber-glow: oklch(0.78 0.16 55);
+  --color-gold: oklch(0.78 0.10 75);
+  --color-gold-dim: oklch(0.60 0.08 75);
+  --color-surface: oklch(0.12 0.008 260);
+  --color-surface-raised: oklch(0.16 0.01 260);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+:root {
+  /* Cinematic dark-first palette */
+  --radius: 0.5rem;
+  --background: oklch(0.08 0.005 260);
+  --foreground: oklch(0.92 0.015 80);
+  --card: oklch(0.11 0.008 260);
+  --card-foreground: oklch(0.92 0.015 80);
+  --popover: oklch(0.10 0.008 260);
+  --popover-foreground: oklch(0.92 0.015 80);
+  --primary: oklch(0.72 0.14 55);
+  --primary-foreground: oklch(0.08 0.005 260);
+  --secondary: oklch(0.16 0.01 260);
+  --secondary-foreground: oklch(0.80 0.02 80);
+  --muted: oklch(0.15 0.008 260);
+  --muted-foreground: oklch(0.55 0.02 80);
+  --accent: oklch(0.65 0.12 50);
+  --accent-foreground: oklch(0.08 0.005 260);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.93 0.015 80);
+  --border: oklch(0.20 0.01 260);
+  --input: oklch(0.15 0.008 260);
+  --ring: oklch(0.72 0.14 55);
+}
+
+/* Dark mode same as root — app is dark-first, no toggle yet */
+.dark {
+  --background: oklch(0.08 0.005 260);
+  --foreground: oklch(0.92 0.015 80);
+  --card: oklch(0.11 0.008 260);
+  --card-foreground: oklch(0.92 0.015 80);
+  --popover: oklch(0.10 0.008 260);
+  --popover-foreground: oklch(0.92 0.015 80);
+  --primary: oklch(0.72 0.14 55);
+  --primary-foreground: oklch(0.08 0.005 260);
+  --secondary: oklch(0.16 0.01 260);
+  --secondary-foreground: oklch(0.80 0.02 80);
+  --muted: oklch(0.15 0.008 260);
+  --muted-foreground: oklch(0.55 0.02 80);
+  --accent: oklch(0.65 0.12 50);
+  --accent-foreground: oklch(0.08 0.005 260);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.93 0.015 80);
+  --border: oklch(0.20 0.01 260);
+  --input: oklch(0.15 0.008 260);
+  --ring: oklch(0.72 0.14 55);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Instrument Serif', Georgia, serif;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+  ::selection {
+    background-color: oklch(0.72 0.14 55 / 0.3);
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--background); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.55 0.02 80); }
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  a[href],
+  select:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer components {
+  /* Film grain overlay */
+  .film-grain::after {
+    content: "";
+    position: fixed;
+    inset: -10%;
+    width: 120%;
+    height: 120%;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+    /* static texture: the animated flicker caused continuous fullscreen
+       repaints that made scrolling janky. ponytail: static grain, re-add
+       a throttled flicker only if the texture feels too flat. */
+  }
+
+  /* Text gradient amber/gold */
+  .text-gradient {
+    background: linear-gradient(135deg, oklch(0.78 0.16 55) 0%, oklch(0.78 0.10 75) 50%, oklch(0.72 0.14 55) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    background: linear-gradient(90deg, oklch(0.12 0.008 260) 25%, oklch(0.16 0.01 260) 50%, oklch(0.12 0.008 260) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Glass morphism */
+  .glass {
+    background: oklch(0.10 0.008 260 / 0.85);
+    backdrop-filter: blur(20px) saturate(1.5);
+    -webkit-backdrop-filter: blur(20px) saturate(1.5);
+    border: 1px solid oklch(1 0 0 / 0.06);
+  }
+
+  /* Amber glow */
+  .amber-glow {
+    box-shadow: 0 0 40px oklch(0.72 0.14 55 / 0.15), 0 0 80px oklch(0.72 0.14 55 / 0.05);
+  }
+
+  /* Card hover glow */
+  .card-glow {
+    transition: box-shadow 300ms cubic-bezier(0.23, 1, 0.32, 1), transform 300ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  .card-glow:hover {
+    box-shadow: 0 0 30px oklch(0.72 0.14 55 / 0.12), 0 20px 60px oklch(0 0 0 / 0.5);
+  }
+
+  /* Cinematic divider */
+  .divider-amber {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, oklch(0.72 0.14 55) 50%, transparent);
+    opacity: 0.3;
+  }
+
+  /* Floating poster animation */
+  .float-poster {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  /* Movie card built on PixelCard: poster-forward, amber glow on hover */
+  .pixel-card.pelipick-poster {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    border-radius: 16px;
+    cursor: pointer;
+    display: block;
+  }
+  .pixel-card.pelipick-poster:hover {
+    border-color: oklch(0.72 0.14 55 / 0.6);
+  }
+  .pixel-card.pelipick-poster .pixel-canvas {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .film-grain::after { animation: none; }
+    .float-poster { animation: none; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  .container {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+      max-width: 1280px;
+    }
+  }
+}

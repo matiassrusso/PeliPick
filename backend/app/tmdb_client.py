@@ -9,6 +9,7 @@ from .recommender import positive_tags_from_text
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
+TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 REQUEST_TIMEOUT = 5
 
 # TMDb's movie genre ids are stable, publicly documented constants, so we
@@ -78,6 +79,12 @@ def _get_json(url: str) -> dict:
         raise TmdbError(f"No pude consultar TMDb: {exc}") from exc
 
 
+def _image_url(path: str | None, size: str) -> str | None:
+    if not path:
+        return None
+    return f"{TMDB_IMAGE_BASE}/{size}{path}"
+
+
 def _map_result(raw: dict) -> dict | None:
     title = (raw.get("title") or "").strip()
     release_date = raw.get("release_date") or ""
@@ -89,15 +96,25 @@ def _map_result(raw: dict) -> dict | None:
     except ValueError:
         return None
 
+    overview = raw.get("overview") or ""
     tags: set[str] = set()
     for genre_id in raw.get("genre_ids", []):
         tags.update(GENRE_ID_TAG_MAP.get(genre_id, []))
-    tags.update(positive_tags_from_text(raw.get("overview") or ""))
+    tags.update(positive_tags_from_text(overview))
 
     if not tags:
         return None
 
-    return {"title": title, "year": year, "kind": "movie", "tags": sorted(tags)}
+    return {
+        "title": title,
+        "year": year,
+        "kind": "movie",
+        "tags": sorted(tags),
+        "poster_path": _image_url(raw.get("poster_path"), "w500"),
+        "backdrop_path": _image_url(raw.get("backdrop_path"), "w780"),
+        "overview": overview,
+        "vote_average": raw.get("vote_average"),
+    }
 
 
 def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:

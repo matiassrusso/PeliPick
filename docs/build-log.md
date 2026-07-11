@@ -1,5 +1,37 @@
 # Build Log
 
+## 2026-07-11
+
+### Persistencia, login y feedback
+
+- SQLite (stdlib `sqlite3`, sin ORM), tokens de sesión opacos, passwords con
+  PBKDF2 — cero dependencias nuevas
+- feedback explícito por pick (me interesa / no me interesa / ya la vi)
+
+### Catálogo real con TMDb
+
+- `/discover/movie` mapeado a nuestro vocabulario de tags (género + overview)
+- fallback al catálogo mock si TMDb falla o no hay key configurada
+
+### UI/UX generada externamente, adaptada a mano
+
+- el usuario generó un frontend completo con otra IA (plataforma "Manus"):
+  Node/tRPC/Drizzle/MySQL en el server, React/Tailwind/Radix con tema
+  "cinematic" en el cliente
+- se investigó el zip con agentes antes de tocar nada: el diseño asumía un
+  backend más rico que el nuestro (perfil de gusto con gráficos, sesiones
+  revisitables, cast/tráiler, explicaciones por LLM)
+- decisión: nos quedamos solo con la UI/tema, tiramos el server entero, y
+  reconectamos las páginas a nuestro FastAPI existente — sin construir las
+  features que ese backend hubiera necesitado
+- se verificó código real (no solo lo "disponible") antes de portar
+  dependencias: ninguna página usaba los componentes shadcn/ui/Radix del zip,
+  así que no se portaron
+- póster/backdrop/overview/rating de TMDb ahora viajan hasta el frontend
+  (ya venían gratis en la respuesta que se pedía)
+- quedó afuera, documentado: perfil de gusto con gráficos, historial de
+  sesiones, cast/tráiler en el modal
+
 ## 2026-07-10
 
 ### Base del producto
