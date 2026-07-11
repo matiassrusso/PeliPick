@@ -74,16 +74,21 @@ Inicia recuperación de contraseña.
 ```json
 {
   "status": "ok",
-  "reset_token": "temporary-reset-token"
+  "reset_token": null
 }
 ```
 
-Si el usuario no existe, devuelve el mismo `200` con `reset_token: null`.
+El backend siempre genera y guarda el token internamente (hasheado en
+SQLite), pero **por default nunca lo devuelve en la response** — ni para
+usuarios que existen ni para los que no, así no hay forma de distinguir uno
+de otro desde afuera. Sin eso, cualquiera podía pedir el reset de cualquier
+usuario y tomar la cuenta sin tocar su email.
 
-Nota: por ahora **no hay email configurado**. Entonces el backend genera y
-valida el token, pero todavía lo devuelve en la response para poder probar el
-flujo de punta a punta. Cuando haya proveedor de mail, ese token debería dejar
-de exponerse y enviarse por email con expiración corta.
+`reset_token` solo viaja en la respuesta si el backend corre con
+`PELIPICK_DEBUG=1` en `backend/.env` — para poder probar el flujo de punta a
+punta en local sin un proveedor de mail configurado. **Nunca debe estar
+seteado en producción.** Cuando haya proveedor de mail real, este debug
+override se saca y el token se manda solo por email.
 
 ## `POST /auth/reset-password`
 

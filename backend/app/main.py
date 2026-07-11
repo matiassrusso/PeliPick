@@ -1,3 +1,4 @@
+import os
 import sqlite3
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
@@ -17,6 +18,10 @@ from .models import (
 from .recommender import recommend
 
 MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB — real Letterboxd exports run in the tens of KB
+
+
+def _debug_mode() -> bool:
+    return os.environ.get("PELIPICK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
 
 app = FastAPI(title="PeliPick API")
 
@@ -86,7 +91,8 @@ def forgot_password(payload: PasswordResetRequest) -> PasswordResetStartResponse
     token, token_hash = auth.create_password_reset_token()
     expires_at = auth.now_ts() + auth.RESET_TOKEN_TTL_SECONDS
     db.save_password_reset_token(user["id"], token_hash, expires_at)
-    return PasswordResetStartResponse(status="ok", reset_token=token)
+    exposed_token = token if _debug_mode() else None
+    return PasswordResetStartResponse(status="ok", reset_token=exposed_token)
 
 
 @app.post("/auth/reset-password", status_code=204)

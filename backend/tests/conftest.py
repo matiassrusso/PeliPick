@@ -21,3 +21,10 @@ def no_real_tmdb(monkeypatch):
 def no_real_gemini(monkeypatch):
     # same deal as TMDB_API_KEY, but for the Gemini refine step.
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_debug_mode(monkeypatch):
+    # a dev machine may have PELIPICK_DEBUG=1 set locally; tests that rely on
+    # the token NOT being exposed by default must not depend on that.
+    monkeypatch.delenv("PELIPICK_DEBUG", raising=False)

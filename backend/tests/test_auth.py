@@ -118,7 +118,11 @@ def test_auth_me_rejects_missing_or_invalid_token() -> None:
     )
 
 
-def test_forgot_password_returns_token_and_reset_invalidates_old_sessions() -> None:
+def test_forgot_password_returns_token_and_reset_invalidates_old_sessions(monkeypatch) -> None:
+    # PELIPICK_DEBUG exposes the reset token in the response so the flow can
+    # be exercised end-to-end without a real email provider configured.
+    monkeypatch.setenv("PELIPICK_DEBUG", "1")
+
     register = client.post(
         "/auth/register", json={"username": "resetuser", "password": "supersecret"}
     )
@@ -160,7 +164,19 @@ def test_forgot_password_is_generic_for_unknown_username() -> None:
     assert response.json() == {"status": "ok", "reset_token": None}
 
 
+def test_forgot_password_hides_token_by_default_even_for_existing_user() -> None:
+    # PELIPICK_DEBUG is unset here (conftest clears it) — this is the real
+    # default behavior: no token in the response, existing user or not.
+    client.post("/auth/register", json={"username": "notexposed", "password": "supersecret"})
+
+    response = client.post("/auth/forgot-password", json={"username": "notexposed"})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "reset_token": None}
+
+
 def test_reset_password_rejects_expired_token(monkeypatch) -> None:
+    monkeypatch.setenv("PELIPICK_DEBUG", "1")
     client.post("/auth/register", json={"username": "expired", "password": "supersecret"})
     monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 2_000)
     reset_token = client.post(
