@@ -193,6 +193,38 @@ def test_recommend_zip_falls_back_to_heuristic_when_gemini_fails(monkeypatch) ->
     assert response.json()["recommendations"]
 
 
+def test_movie_details_returns_cast_and_trailer(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.fetch_credits",
+        lambda tmdb_id, kind: [{"name": "Actor", "character": "Role", "profile_path": None}],
+    )
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.fetch_trailer_key", lambda tmdb_id, kind: "abc123"
+    )
+
+    headers = _auth_headers("moviedetails")
+    response = client.get("/movies/42/details", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cast"] == [{"name": "Actor", "character": "Role", "profile_path": None}]
+    assert body["trailer_key"] == "abc123"
+
+
+def test_movie_details_requires_tmdb_configured() -> None:
+    headers = _auth_headers("moviedetailsnokey")
+    response = client.get("/movies/42/details", headers=headers)
+
+    assert response.status_code == 503
+
+
+def test_movie_details_requires_auth() -> None:
+    response = client.get("/movies/42/details")
+
+    assert response.status_code == 401
+
+
 def test_feedback_rejects_invalid_status() -> None:
     headers = _auth_headers("badstatus")
     picks = _post_zip(headers).json()["recommendations"]
