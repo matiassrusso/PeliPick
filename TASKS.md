@@ -35,10 +35,7 @@ reasignÃ³ a Codex en `pelipick-codex`.
 
 ## In Progress
 
-- [ ] [cache-001] CachÃ© de resultados de TMDb (in-memory, TTL simple,
-      stdlib, sin dependencias nuevas) â€” evita pegarle a `/discover/movie`
-      y `/discover/tv` en cada request si el mood+pÃ¡gina ya se pidiÃ³ hace
-      poco | owner: codex | depende_de: -
+(vacÃ­o)
 
 ## Blocked
 
@@ -46,6 +43,12 @@ reasignÃ³ a Codex en `pelipick-codex`.
 
 ## Done
 
+- [x] [cache-001] CachÃ© de resultados de TMDb (in-memory, TTL simple,
+      stdlib, sin dependencias nuevas) â€” evita pegarle a `/discover/movie`
+      y `/discover/tv` en cada request si el mood+pÃ¡gina ya se pidiÃ³ hace
+      poco | owner: codex | rama: `codex/auth-001` | archivos:
+      `backend/app/tmdb_client.py`, `backend/tests/test_tmdb_client.py`,
+      `docs/tmdb-setup.md`
 - [x] [auth-001] RecuperaciÃ³n de contraseÃ±a + rate limiting de login |
       owner: codex | rama: `codex/auth-001` | archivos:
       `backend/app/auth.py`, `backend/app/db.py`, `backend/app/main.py`,

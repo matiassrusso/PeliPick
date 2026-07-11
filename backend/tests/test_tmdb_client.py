@@ -1,6 +1,11 @@
-import pytest
+﻿import pytest
 
 from backend.app import tmdb_client
+
+
+@pytest.fixture(autouse=True)
+def clear_tmdb_cache() -> None:
+    tmdb_client._DISCOVER_CACHE.clear()
 
 
 def test_fetch_candidates_requires_api_key(monkeypatch) -> None:
@@ -96,6 +101,87 @@ def test_fetch_candidates_includes_series_from_tv_discover(monkeypatch) -> None:
     assert item["poster_path"] == "https://image.tmdb.org/t/p/w500/tvposter.jpg"
 
 
+def test_fetch_candidates_reuses_cached_pages_until_ttl_expires(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        if "discover/tv" in url:
+            return {
+                "results": [
+                    {
+                        "name": "Cached Show",
+                        "first_air_date": "2021-03-01",
+                        "genre_ids": [18],
+                        "overview": "",
+                    }
+                ]
+            }
+        return {
+            "results": [
+                {
+                    "title": "Cached Movie",
+                    "release_date": "2020-05-01",
+                    "genre_ids": [53],
+                    "overview": "dark and slow",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+    monkeypatch.setattr(tmdb_client, "_now_monotonic", lambda: 100.0)
+
+    first = tmdb_client.fetch_candidates("funny", pages=1)
+    second = tmdb_client.fetch_candidates("funny", pages=1)
+
+    assert first == second
+    assert len(calls) == 2
+
+
+def test_fetch_candidates_refreshes_after_ttl(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+    times = iter([100.0, 100.0, 401.0, 401.0, 401.0, 401.0])
+
+    def fake_now() -> float:
+        return next(times)
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        if "discover/tv" in url:
+            return {
+                "results": [
+                    {
+                        "name": f"Show {len(calls)}",
+                        "first_air_date": "2021-03-01",
+                        "genre_ids": [18],
+                        "overview": "",
+                    }
+                ]
+            }
+        return {
+            "results": [
+                {
+                    "title": f"Movie {len(calls)}",
+                    "release_date": "2020-05-01",
+                    "genre_ids": [53],
+                    "overview": "dark and slow",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_now_monotonic", fake_now)
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+    monkeypatch.setattr(tmdb_client, "CACHE_TTL_SECONDS", 300)
+
+    first = tmdb_client.fetch_candidates("funny", pages=1)
+    second = tmdb_client.fetch_candidates("funny", pages=1)
+
+    assert len(calls) == 4
+    assert first != second
+
+
 def test_map_result_reads_tv_fields_when_kind_is_series() -> None:
     mapped = tmdb_client._map_result(
         {
@@ -137,3 +223,4 @@ def test_get_json_wraps_network_errors(monkeypatch) -> None:
 
     with pytest.raises(tmdb_client.TmdbError):
         tmdb_client._get_json("https://api.themoviedb.org/3/discover/movie")
+

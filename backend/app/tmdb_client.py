@@ -1,7 +1,9 @@
-import json
+﻿import json
 import os
+import time
 import urllib.parse
 import urllib.request
+from collections import OrderedDict
 from pathlib import Path
 from urllib.error import URLError
 
@@ -12,6 +14,8 @@ DISCOVER_URL = "https://api.themoviedb.org/3/discover/movie"
 DISCOVER_TV_URL = "https://api.themoviedb.org/3/discover/tv"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 REQUEST_TIMEOUT = 5
+CACHE_TTL_SECONDS = 5 * 60
+CACHE_MAX_ENTRIES = 32
 
 # TMDb's movie genre ids are stable, publicly documented constants, so we
 # hardcode the id -> our tag vocabulary mapping instead of fetching and
@@ -77,6 +81,8 @@ MOOD_TV_GENRE_ID_MAP: dict[str, int] = {
     "funny": 35,
     "action": 10759,
 }
+
+_DISCOVER_CACHE: OrderedDict[tuple[str, str, int], tuple[float, list[dict]]] = OrderedDict()
 
 
 class TmdbError(Exception):
@@ -151,6 +157,35 @@ def _map_result(
     }
 
 
+def _now_monotonic() -> float:
+    return time.monotonic()
+
+
+def _clone_items(items: list[dict]) -> list[dict]:
+    return [item.copy() for item in items]
+
+
+def _get_cached_discover_page(cache_key: tuple[str, str, int]) -> list[dict] | None:
+    cached = _DISCOVER_CACHE.get(cache_key)
+    if cached is None:
+        return None
+
+    expires_at, items = cached
+    if expires_at <= _now_monotonic():
+        del _DISCOVER_CACHE[cache_key]
+        return None
+
+    _DISCOVER_CACHE.move_to_end(cache_key)
+    return _clone_items(items)
+
+
+def _store_cached_discover_page(cache_key: tuple[str, str, int], items: list[dict]) -> None:
+    _DISCOVER_CACHE[cache_key] = (_now_monotonic() + CACHE_TTL_SECONDS, _clone_items(items))
+    _DISCOVER_CACHE.move_to_end(cache_key)
+    while len(_DISCOVER_CACHE) > CACHE_MAX_ENTRIES:
+        _DISCOVER_CACHE.popitem(last=False)
+
+
 def _fetch_from_discover(
     url: str,
     kind: str,
@@ -160,10 +195,17 @@ def _fetch_from_discover(
     api_key: str,
     pages: int,
 ) -> list[dict]:
-    genre_id = mood_genre_map.get(mood.strip().lower())
+    normalized_mood = mood.strip().lower()
+    genre_id = mood_genre_map.get(normalized_mood)
 
     candidates: list[dict] = []
     for page in range(1, pages + 1):
+        cache_key = (kind, normalized_mood, page)
+        cached_page = _get_cached_discover_page(cache_key)
+        if cached_page is not None:
+            candidates.extend(cached_page)
+            continue
+
         params = {
             "api_key": api_key,
             "language": "en-US",
@@ -178,10 +220,14 @@ def _fetch_from_discover(
         page_url = f"{url}?{urllib.parse.urlencode(params)}"
         data = _get_json(page_url)
 
+        mapped_page: list[dict] = []
         for raw in data.get("results", []):
             mapped = _map_result(raw, kind, genre_tag_map)
             if mapped:
-                candidates.append(mapped)
+                mapped_page.append(mapped)
+
+        _store_cached_discover_page(cache_key, mapped_page)
+        candidates.extend(mapped_page)
 
     return candidates
 
