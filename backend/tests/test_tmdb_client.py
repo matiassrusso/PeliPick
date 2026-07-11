@@ -239,3 +239,49 @@ def test_get_json_wraps_network_errors(monkeypatch) -> None:
     with pytest.raises(tmdb_client.TmdbError):
         tmdb_client._get_json("https://api.themoviedb.org/3/discover/movie")
 
+
+def test_fetch_credits_sorts_by_order_and_limits(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/movie/42/credits" in url
+        return {
+            "cast": [
+                {"name": "Second", "character": "B", "order": 1, "profile_path": "/b.jpg"},
+                {"name": "First", "character": "A", "order": 0, "profile_path": None},
+                {"name": "", "character": "no name", "order": 2},
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    cast = tmdb_client.fetch_credits(42, kind="movie", limit=2)
+
+    assert [c["name"] for c in cast] == ["First", "Second"]
+    assert cast[1]["profile_path"] == "https://image.tmdb.org/t/p/w185/b.jpg"
+
+
+def test_fetch_trailer_key_prefers_official_youtube_trailer(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/tv/7/videos" in url
+        return {
+            "results": [
+                {"site": "YouTube", "type": "Trailer", "key": "unofficial", "official": False},
+                {"site": "YouTube", "type": "Trailer", "key": "official", "official": True},
+                {"site": "Vimeo", "type": "Trailer", "key": "ignored"},
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    assert tmdb_client.fetch_trailer_key(7, kind="series") == "official"
+
+
+def test_fetch_trailer_key_returns_none_when_no_trailer(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(tmdb_client, "_get_json", lambda url: {"results": []})
+
+    assert tmdb_client.fetch_trailer_key(1) is None
+

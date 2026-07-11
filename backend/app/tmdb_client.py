@@ -245,3 +245,48 @@ def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:
         DISCOVER_TV_URL, "series", TV_GENRE_ID_TAG_MAP, MOOD_TV_GENRE_ID_MAP, mood, api_key, pages
     )
     return movies + series
+
+
+def _tmdb_endpoint_kind(kind: str) -> str:
+    return "movie" if kind == "movie" else "tv"
+
+
+def fetch_credits(tmdb_id: int, kind: str = "movie", limit: int = 10) -> list[dict]:
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    endpoint = _tmdb_endpoint_kind(kind)
+    url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/credits?api_key={api_key}"
+    data = _get_json(url)
+
+    cast = sorted(data.get("cast", []), key=lambda member: member.get("order", 999))
+    return [
+        {
+            "name": member["name"],
+            "character": member.get("character", ""),
+            "profile_path": _image_url(member.get("profile_path"), "w185"),
+        }
+        for member in cast
+        if member.get("name")
+    ][:limit]
+
+
+def fetch_trailer_key(tmdb_id: int, kind: str = "movie") -> str | None:
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    endpoint = _tmdb_endpoint_kind(kind)
+    url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/videos?api_key={api_key}"
+    data = _get_json(url)
+
+    trailers = [
+        video
+        for video in data.get("results", [])
+        if video.get("site") == "YouTube" and video.get("type") == "Trailer" and video.get("key")
+    ]
+    if not trailers:
+        return None
+    trailers.sort(key=lambda video: not video.get("official", False))
+    return trailers[0]["key"]
