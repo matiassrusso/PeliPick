@@ -16,6 +16,21 @@ def test_recommend_filters_seen_titles_and_prefers_matching_mood() -> None:
     assert response.recommendations[0].title in {"Perfect Blue", "Burning"}
 
 
+def test_recommend_excludes_titles_from_also_seen() -> None:
+    custom_catalog = [
+        {"title": "Custom Movie", "year": 2021, "kind": "movie", "tags": ["psychological", "dark"]},
+    ]
+
+    response = recommend(
+        ratings=[],
+        mood="",
+        catalog=custom_catalog,
+        also_seen=frozenset({"Custom Movie"}),
+    )
+
+    assert response.recommendations == []
+
+
 def test_recommend_uses_custom_catalog_when_provided() -> None:
     custom_catalog = [
         {"title": "Custom Movie", "year": 2021, "kind": "movie", "tags": ["psychological", "dark"]},

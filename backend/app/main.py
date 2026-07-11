@@ -1,21 +1,20 @@
-import csv
 import sqlite3
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import catalog, db, llm_client, tmdb_client
+from . import catalog, db, letterboxd_zip, llm_client, tmdb_client
 from .auth import create_token, get_current_user, hash_password, verify_password
-from .csv_ingest import parse_ratings_csv
 from .models import (
     AuthResponse,
-    CsvRecommendRequest,
     FeedbackRequest,
     RecommendRequest,
     RecommendResponse,
     UserCredentials,
 )
 from .recommender import recommend
+
+MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB — real Letterboxd exports run in the tens of KB
 
 app = FastAPI(title="PeliPick API")
 
@@ -74,33 +73,42 @@ def recommend_titles(payload: RecommendRequest) -> RecommendResponse:
     return recommend(payload.ratings, payload.mood)
 
 
-@app.post("/recommend/csv", response_model=RecommendResponse)
-def recommend_titles_from_csv(
-    payload: CsvRecommendRequest, user: sqlite3.Row = Depends(get_current_user)
+@app.post("/recommend/zip", response_model=RecommendResponse)
+async def recommend_titles_from_zip(
+    mood: str = Form(""),
+    file: UploadFile = File(...),
+    user: sqlite3.Row = Depends(get_current_user),
 ) -> RecommendResponse:
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Subí el .zip que exporta Letterboxd.")
+
+    data = await file.read()
+    if len(data) > MAX_ZIP_SIZE:
+        raise HTTPException(status_code=400, detail="Ese zip es demasiado grande.")
+
     try:
-        ratings = parse_ratings_csv(payload.csv_content)
-    except csv.Error as exc:
-        raise HTTPException(status_code=400, detail="CSV inválido, no lo pude parsear.") from exc
+        ratings, extra_seen = letterboxd_zip.parse_letterboxd_zip(data)
+    except letterboxd_zip.ZipParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not ratings:
         raise HTTPException(
             status_code=400,
-            detail="No encontré filas con título y rating válidos en ese CSV.",
+            detail="No encontré ratings ni reviews usables en ese zip.",
         )
 
     candidates = catalog.CATALOG
     if tmdb_client.is_configured():
         try:
-            candidates = tmdb_client.fetch_candidates(payload.mood)
+            candidates = tmdb_client.fetch_candidates(mood)
         except tmdb_client.TmdbError:
             candidates = catalog.CATALOG
 
-    response = recommend(ratings, payload.mood, catalog=candidates)
+    response = recommend(ratings, mood, catalog=candidates, also_seen=frozenset(extra_seen))
 
     if llm_client.is_configured():
         try:
-            response = llm_client.refine_recommendations(ratings, payload.mood, response)
+            response = llm_client.refine_recommendations(ratings, mood, response)
         except llm_client.LlmError:
             pass
 
@@ -109,7 +117,7 @@ def recommend_titles_from_csv(
     )
     inserted_ids = db.save_recommendations(
         user["id"],
-        payload.mood,
+        mood,
         [item.model_dump() for item in response.recommendations],
     )
     for item, new_id in zip(response.recommendations, inserted_ids):

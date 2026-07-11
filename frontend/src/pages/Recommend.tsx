@@ -45,20 +45,14 @@ type RecommendResponse = {
 
 type FeedbackStatus = "interested" | "not_interested" | "seen";
 
-const starterCsv = `Name,Rating,Review
-La La Land,4.5,romance with style and emotional rhythm
-Enemy,4.0,psychological and weird in a good way
-Transformers,1.5,too loud and empty`;
-
 const feedbackOptions: { status: FeedbackStatus; label: string; icon: typeof ThumbsUp }[] = [
   { status: "interested", label: "Me interesa", icon: ThumbsUp },
   { status: "not_interested", label: "No me interesa", icon: ThumbsDown },
   { status: "seen", label: "Ya la vi", icon: Eye },
 ];
 
-function countRows(content: string): number {
-  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.length > 1 ? lines.length - 1 : 0;
+function formatFileSize(bytes: number): string {
+  return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ─── Movie Detail Modal ─────────────────────────────────────────────────────
@@ -329,9 +323,7 @@ export default function Recommend() {
   const [, navigate] = useLocation();
 
   const [mood, setMood] = useState("psychological");
-  const [csvContent, setCsvContent] = useState(starterCsv);
-  const [importedCount, setImportedCount] = useState(() => countRows(starterCsv));
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [zipFile, setZipFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -348,14 +340,11 @@ export default function Recommend() {
   }, [authLoading, isAuthenticated, navigate]);
 
   const processFile = useCallback((file: File) => {
-    setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      setCsvContent(content);
-      setImportedCount(countRows(content));
-    };
-    reader.readAsText(file);
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      toast.error("Eso no es un .zip — exportá tu data desde Letterboxd y subí ese archivo.");
+      return;
+    }
+    setZipFile(file);
   }, []);
 
   function handleDrop(event: React.DragEvent<HTMLDivElement>) {
@@ -371,18 +360,21 @@ export default function Recommend() {
   }
 
   async function handleGenerate() {
-    if (!token) return;
+    if (!token || !zipFile) return;
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/recommend/csv`, {
+      const formData = new FormData();
+      formData.append("mood", mood);
+      formData.append("file", zipFile);
+
+      const response = await fetch(`${API_BASE_URL}/recommend/zip`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ mood, csv_content: csvContent }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -392,7 +384,7 @@ export default function Recommend() {
 
       const data = (await response.json()) as RecommendResponse;
       if (!data.recommendations.length) {
-        throw new Error("No pude leer ratings válidos de ese CSV.");
+        throw new Error("No pude leer ratings válidos de ese zip.");
       }
 
       setResult(data);
@@ -463,12 +455,7 @@ export default function Recommend() {
                     <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
                       <li>Letterboxd → Settings → pestaña Data</li>
                       <li>"Export your data" — descarga un .zip</li>
-                      <li>
-                        Descomprimí y buscá{" "}
-                        <code className="text-primary bg-primary/10 px-1 rounded text-xs">ratings.csv</code> o{" "}
-                        <code className="text-primary bg-primary/10 px-1 rounded text-xs">reviews.csv</code>
-                      </li>
-                      <li>Subí cualquiera de los dos acá abajo (reviews.csv da mejores resultados)</li>
+                      <li>Subí ese .zip tal cual, sin descomprimir, acá abajo</li>
                     </ol>
                   </div>
                 </div>
@@ -486,42 +473,28 @@ export default function Recommend() {
                   isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-card/30"
                 }`}
               >
-                <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={handleFileInput} className="hidden" />
+                <input ref={fileInputRef} type="file" accept=".zip,application/zip" onChange={handleFileInput} className="hidden" />
                 <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
                   <UploadIcon className="w-6 h-6 text-primary" />
                 </div>
                 <h3 className="text-lg font-serif mb-1" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                  {isDragging ? "Soltalo acá" : "Arrastrá tu CSV acá"}
+                  {isDragging ? "Soltalo acá" : "Arrastrá tu .zip acá"}
                 </h3>
                 <p className="text-muted-foreground text-sm mb-3">o hacé click para buscarlo</p>
-                {fileName ? (
+                {zipFile ? (
                   <div className="inline-flex items-center gap-2 text-xs text-primary bg-primary/10 px-3 py-1.5 rounded-full">
                     <CheckCircle className="w-3 h-3" />
-                    {fileName} · {importedCount} filas detectadas
+                    {zipFile.name} · {formatFileSize(zipFile.size)}
                   </div>
                 ) : (
                   <div className="inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-3 py-1.5 rounded-full">
                     <FileText className="w-3 h-3" />
-                    Solo CSV
+                    Solo .zip
                   </div>
                 )}
               </div>
 
               <div className="p-6 rounded-2xl border border-border bg-card/50">
-                <label className="block mb-4">
-                  <span className="text-sm font-medium mb-2 block">O pegalo acá</span>
-                  <textarea
-                    rows={6}
-                    value={csvContent}
-                    onChange={(event) => {
-                      setCsvContent(event.target.value);
-                      setImportedCount(countRows(event.target.value));
-                      setFileName(null);
-                    }}
-                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors duration-200"
-                  />
-                </label>
-
                 <label className="block mb-5">
                   <span className="text-sm font-medium mb-2 block">Qué querés ver hoy</span>
                   <select
@@ -539,7 +512,7 @@ export default function Recommend() {
 
                 <button
                   onClick={handleGenerate}
-                  disabled={loading || !csvContent}
+                  disabled={loading || !zipFile}
                   className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3.5 rounded-xl font-medium hover:bg-primary/90 transition-all duration-200 active:scale-95 disabled:opacity-60 amber-glow"
                 >
                   <Sparkles className="w-4 h-4" />

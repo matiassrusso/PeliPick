@@ -9,15 +9,21 @@ Hoy `PeliPick` es una vertical slice local con dos partes:
 
 Ya hay base de datos (`SQLite`), login, catálogo real (`TMDb`, con fallback a
 mock) y un agente de IA (`Gemini`) que refina el resumen de gusto y el orden/
-razones de los picks. No hay integración real con Letterboxd todavía (solo
-CSV export).
+razones de los picks. La ingesta es el `.zip` completo que exporta
+Letterboxd (no un CSV suelto) — no hay scraping ni import por username
+todavía.
 
 ## Flujo actual
 
 1. El usuario se registra o entra con usuario/contraseña.
-2. El usuario pega o sube un `CSV` desde la web.
-3. El frontend manda el contenido crudo al backend con su token de sesión.
-4. El backend parsea filas válidas.
+2. El usuario sube el `.zip` de su export de Letterboxd desde la web.
+3. El frontend manda el zip como `multipart/form-data` al backend con su
+   token de sesión.
+4. El backend abre el zip en memoria y combina varias señales: rating base
+   (`ratings.csv`/`reviews.csv`), boost por rewatch (`diary.csv`), likes sin
+   puntuar (`likes/films.csv`), favoritos explícitos (`profile.csv`) y
+   exclusión ampliada por todo lo visto (`watched.csv`) — ver
+   [letterboxd-zip-format.md](letterboxd-zip-format.md).
 5. El backend resume el gusto del usuario.
 6. El backend trae candidatos de `TMDb` (o cae al catálogo mock si no hay key
    configurada o TMDb falla) y los scorea.
@@ -41,7 +47,7 @@ Páginas:
 
 - [frontend/src/pages/Home.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Home.tsx): landing
 - [frontend/src/pages/Login.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Login.tsx): login/registro
-- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): CSV + mood + resultados + feedback, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
+- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): upload del zip + mood + resultados + feedback, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
 - [frontend/src/pages/NotFound.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\NotFound.tsx)
 
 Estado compartido:
@@ -65,7 +71,8 @@ Entrada principal:
 Piezas actuales:
 
 - [backend/app/models.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\models.py): contratos de request/response
-- [backend/app/csv_ingest.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\csv_ingest.py): parser de CSV
+- [backend/app/csv_ingest.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\csv_ingest.py): parser de un CSV individual (`Name`/`Title`/`Film`, etc.), reusado por `letterboxd_zip.py`
+- [backend/app/letterboxd_zip.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\letterboxd_zip.py): abre el zip del export, combina ratings/reviews/diary/likes/watched/profile
 - [backend/app/recommender.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\recommender.py): resumen y ranking heurístico
 - [backend/app/catalog.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\catalog.py): catálogo mock
 - [backend/app/db.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
@@ -75,7 +82,12 @@ Piezas actuales:
 
 ## Decisiones deliberadas
 
-- `CSV` antes que scraping: más simple para validar producto
+- import del `.zip` completo de Letterboxd (multipart) en vez de pegar/subir
+  un CSV suelto: el zip trae señal real que un solo CSV no tiene (likes,
+  rewatches, favoritos, historial completo de visto) — ver
+  `docs/letterboxd-zip-format.md`
+- zip antes que scraping del perfil público: más simple para validar
+  producto y no depende de que Letterboxd no cambie su HTML
 - heurística simple antes que embeddings/agente libre: más control y menos humo
 - `SQLite` vía stdlib en vez de un ORM: el esquema es chico (4 tablas), no
   justifica sumar `SQLAlchemy` todavía
@@ -109,14 +121,15 @@ Piezas actuales:
 - sin caché de resultados de TMDb ni de Gemini
 - el agente de IA reordena y reescribe texto, no rescorea ni trae candidatos
   propios — sigue acotado a lo que ya filtró el heurístico
-- no hay scraping de Letterboxd por username, solo CSV export manual
-- no parsea todavía todas las variantes de export de Letterboxd
+- no hay scraping de Letterboxd por username, solo import del zip manual
+- no usa los `Tags` propios del usuario en `diary.csv`/`reviews.csv` (casi
+  nadie los completa, pero cuando existen son señal directa)
 - sin recuperación de contraseña, sin rate limiting de login
 
 ## Próxima arquitectura probable
 
-- perfil de gusto visual (necesita matchear el CSV del usuario contra TMDb)
+- perfil de gusto visual (necesita matchear el historial del usuario contra TMDb)
 - historial de sesiones de recomendación revisitables
 - cast y tráiler en el detalle de película
 - scraping o import automático desde el username de Letterboxd, como
-  alternativa al CSV manual
+  alternativa al zip manual

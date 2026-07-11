@@ -52,10 +52,11 @@ def test_login_rejects_unknown_username() -> None:
     assert response.status_code == 401
 
 
-def test_recommend_csv_requires_auth() -> None:
+def test_recommend_zip_requires_auth() -> None:
     response = client.post(
-        "/recommend/csv",
-        json={"csv_content": "Name,Rating,Review\nPerfect Blue,4.5,dark"},
+        "/recommend/zip",
+        data={"mood": ""},
+        files={"file": ("export.zip", b"not-a-real-zip", "application/zip")},
     )
 
     assert response.status_code == 401

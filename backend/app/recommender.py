@@ -70,10 +70,13 @@ def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[st
 
 
 def recommend(
-    ratings: list[RatedItem], mood: str, catalog: list[dict] = CATALOG
+    ratings: list[RatedItem],
+    mood: str,
+    catalog: list[dict] = CATALOG,
+    also_seen: frozenset[str] = frozenset(),
 ) -> RecommendResponse:
     positive_tags, negative_tags = _collect_preference_tags(ratings)
-    seen_titles = {_normalize(item.title) for item in ratings}
+    seen_titles = {_normalize(item.title) for item in ratings} | {_normalize(t) for t in also_seen}
     mood_text = _normalize(mood)
     mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
 

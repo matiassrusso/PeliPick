@@ -8,8 +8,10 @@
 - backend local con FastAPI
 - frontend local con React + Vite
 - recomendador heurístico simple
-- ingesta manual por CSV, endurecido contra CSVs mal formados (rating fuera de
-  rango, BOM, headers con espacios)
+- ingesta del `.zip` completo del export de Letterboxd (no un CSV suelto):
+  combina rating base, boost por rewatch, likes sin puntuar, favoritos
+  explícitos del perfil, y exclusión ampliada por todo lo visto — ver
+  `docs/letterboxd-zip-format.md`
 - login/registro real con passwords hasheadas (PBKDF2, stdlib) y sesiones por
   token opaco
 - persistencia en SQLite: usuarios, ratings importados, recomendaciones
@@ -21,19 +23,21 @@
 - agente de IA con `Gemini` (free tier, sin pagar OpenAI de entrada): refina
   el resumen de gusto y el orden/razones de los picks ya filtrados por el
   heurístico, con fallback al resultado heurístico si falla o no hay key
-- tests de backend (35, incluyendo auth, feedback, TMDb, Gemini y el
-  desempate por score crudo mockeados/cubiertos)
+- tests de backend (45, incluyendo auth, feedback, TMDb, Gemini, el
+  desempate por score crudo, y el parser del zip de Letterboxd)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
-  Recommend (CSV + mood + resultados con feedback) / NotFound
+  Recommend (upload del zip + mood + resultados con feedback) / NotFound
 - build verificado de frontend
 
 ## Hecho pero verde
 
-- parser CSV
-  - funciona para casos simples y para `ratings.csv`/`reviews.csv` reales de
-    Letterboxd
-  - falta cubrir más variantes de columnas y reportar filas descartadas
+- parser del zip de Letterboxd
+  - lee `reviews.csv`/`ratings.csv`, `diary.csv`, `likes/films.csv`,
+    `watched.csv`, `profile.csv`
+  - no usa `Tags` propios del usuario (raro que estén completos, pero son
+    señal directa cuando existen)
+  - no reporta filas descartadas del CSV base
 
 - recomendación
   - ya scorea contra películas y series reales de TMDb, no solo el mock
@@ -62,9 +66,9 @@
 - cast y tráiler en el detalle de cada película
 - caché de resultados de TMDb si el uso crece
 - import de historial por username de Letterboxd (scraping), como alternativa
-  al CSV manual — evaluado, pendiente por ser la parte más frágil técnicamente
-- parser endurecido para más variantes de export real
-- excluir mejor títulos ya vistos cuando haya ids reales de catálogo
+  al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
+- soportar `Tags` de usuario del zip cuando estén presentes
+- reportar filas descartadas del CSV base
 - observabilidad mínima
 - recuperación de contraseña, rate limiting de login
 

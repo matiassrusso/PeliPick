@@ -1,5 +1,65 @@
 # Build Log
 
+## 2026-07-11 (import del .zip completo de Letterboxd)
+
+### Por qué
+
+Se miró un export real de Letterboxd de un usuario (`letterboxd-*.zip`,
+~20KB, 227 pelis vistas): trae `watched.csv`, `ratings.csv`, `diary.csv`
+(con `Rewatch`/`Tags`), `reviews.csv`, `watchlist.csv`, `profile.csv` (con
+`Favorite Films`), `likes/films.csv`, y más — mucha señal de gusto real que
+un solo CSV pegado a mano no tiene. Se decidió que el usuario suba el
+`.zip` completo en vez de pegar/subir un CSV suelto.
+
+### Backend
+
+- nuevo `backend/app/letterboxd_zip.py`: abre el zip en memoria
+  (`zipfile`+`io` stdlib) y combina señales:
+  - base: `reviews.csv` (preferido, trae texto) o `ratings.csv`
+  - `diary.csv` → boost de +0.5 al rating si `Rewatch` es `Yes`
+  - `likes/films.csv` → rating sintético 4.5 para lo que tiene ❤️ y no
+    estaba puntuado
+  - `profile.csv` → `Favorite Films` (URIs `boxd.it/xxxx`) resueltas
+    cruzando contra `Letterboxd URI` de `watched.csv` — sin pegarle a
+    ningún servicio externo, todo sale del mismo zip — y agregadas como
+    rating sintético 5.0
+  - `watched.csv` → set de exclusión ampliado (antes solo se excluía lo
+    puntuado, ahora todo lo visto)
+- `recommender.py`: `recommend()` suma un parámetro `also_seen` para la
+  exclusión ampliada
+- `main.py`: se reemplazó `POST /recommend/csv` (JSON con `csv_content`)
+  por `POST /recommend/zip` (`multipart/form-data`, campo `file` + `mood`)
+  — un zip es binario, no tiene sentido meterlo en JSON. Se sacó
+  `CsvRecommendRequest` de `models.py`, ya no se usa.
+- nueva dependencia real (antes transitiva): `python-multipart`, la pide
+  FastAPI para parsear `multipart/form-data`
+- límite de 20MB por zip (los reales pesan decenas de KB, es solo un techo
+  de seguridad)
+
+### Frontend
+
+- `Recommend.tsx`: se sacó el textarea de "pegar CSV" (no tiene sentido
+  pegar un zip como texto) y el file input ahora solo acepta `.zip`. El
+  POST se arma con `FormData`, no JSON.
+
+### Verificado
+
+- 45 tests de backend (35 → 45: 10 nuevos entre `letterboxd_zip` y
+  `recommender`, más migración de los viejos tests de `/recommend/csv` a
+  `/recommend/zip`)
+- build de frontend limpio
+- probado end-to-end contra el zip real: 209 ratings base + 5 likes sin
+  puntuar previamente + favoritos resueltos correctamente vía cruce de
+  URIs = 214 ratings finales, 226 títulos en la exclusión ampliada por
+  `watched.csv`
+
+### Limpieza
+
+- se borró `docs/prompt-for-gemini-csv-parser.md`: quedó obsoleto, ya no
+  tiene sentido endurecer un parser de CSV pegado a mano cuando ahora se
+  lee el zip con formato fijo de Letterboxd directamente
+- `docs/csv-format.md` renombrado a `docs/letterboxd-zip-format.md`
+
 ## 2026-07-11 (series en el catálogo)
 
 ### `/discover/tv` sumado al catálogo real

@@ -1,12 +1,23 @@
+import io
+import zipfile
+
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
 from backend.app.llm_client import LlmError
+from backend.app.main import app
 from backend.app.tmdb_client import TmdbError
 
 client = TestClient(app)
 
-VALID_CSV = "Name,Rating,Review\nMad Max: Fury Road,1.5,too loud and empty"
+VALID_RATINGS_CSV = "Name,Rating,Review\nMad Max: Fury Road,1.5,too loud and empty"
+
+
+def _zip_bytes(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
 
 
 def _auth_headers(username: str) -> dict[str, str]:
@@ -15,32 +26,55 @@ def _auth_headers(username: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {login.json()['token']}"}
 
 
-def test_recommend_csv_rejects_malformed_csv() -> None:
-    headers = _auth_headers("malformed")
-    oversized_field = "a" * 200_000
-    response = client.post(
-        "/recommend/csv",
+def _post_zip(headers: dict[str, str], ratings_csv: str = VALID_RATINGS_CSV, mood: str = ""):
+    return client.post(
+        "/recommend/zip",
         headers=headers,
-        json={"csv_content": f"Name,Rating\n{oversized_field},4.5"},
+        data={"mood": mood},
+        files={"file": ("export.zip", _zip_bytes({"ratings.csv": ratings_csv}), "application/zip")},
+    )
+
+
+def test_recommend_zip_rejects_non_zip_filename() -> None:
+    headers = _auth_headers("notazip")
+    response = client.post(
+        "/recommend/zip",
+        headers=headers,
+        data={"mood": ""},
+        files={"file": ("export.csv", b"Name,Rating\nFoo,4.5", "text/csv")},
     )
 
     assert response.status_code == 400
 
 
-def test_recommend_csv_rejects_csv_with_no_valid_rows() -> None:
+def test_recommend_zip_rejects_zip_without_ratings_or_reviews() -> None:
+    headers = _auth_headers("noratings")
+    response = client.post(
+        "/recommend/zip",
+        headers=headers,
+        data={"mood": ""},
+        files={
+            "file": (
+                "export.zip",
+                _zip_bytes({"profile.csv": "Date Joined,Username\n2024-01-01,someone\n"}),
+                "application/zip",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+
+
+def test_recommend_zip_rejects_ratings_csv_with_no_valid_rows() -> None:
     headers = _auth_headers("novalid")
-    response = client.post(
-        "/recommend/csv",
-        headers=headers,
-        json={"csv_content": "Name,Rating\nUnrated Movie,\n"},
-    )
+    response = _post_zip(headers, ratings_csv="Name,Rating\nUnrated Movie,\n")
 
     assert response.status_code == 400
 
 
-def test_recommend_csv_returns_picks_with_ids_for_valid_csv() -> None:
-    headers = _auth_headers("validcsv")
-    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+def test_recommend_zip_returns_picks_with_ids_for_valid_zip() -> None:
+    headers = _auth_headers("validzip")
+    response = _post_zip(headers)
 
     assert response.status_code == 200
     recommendations = response.json()["recommendations"]
@@ -50,9 +84,7 @@ def test_recommend_csv_returns_picks_with_ids_for_valid_csv() -> None:
 
 def test_feedback_accepts_own_recommendation() -> None:
     headers = _auth_headers("feedbackok")
-    picks = client.post(
-        "/recommend/csv", headers=headers, json={"csv_content": VALID_CSV}
-    ).json()["recommendations"]
+    picks = _post_zip(headers).json()["recommendations"]
 
     response = client.post(
         "/feedback",
@@ -66,9 +98,7 @@ def test_feedback_accepts_own_recommendation() -> None:
 def test_feedback_rejects_recommendation_from_another_user() -> None:
     headers_a = _auth_headers("owner")
     headers_b = _auth_headers("intruder")
-    picks = client.post(
-        "/recommend/csv", headers=headers_a, json={"csv_content": VALID_CSV}
-    ).json()["recommendations"]
+    picks = _post_zip(headers_a).json()["recommendations"]
 
     response = client.post(
         "/feedback",
@@ -79,7 +109,7 @@ def test_feedback_rejects_recommendation_from_another_user() -> None:
     assert response.status_code == 404
 
 
-def test_recommend_csv_falls_back_to_mock_catalog_when_tmdb_fails(monkeypatch) -> None:
+def test_recommend_zip_falls_back_to_mock_catalog_when_tmdb_fails(monkeypatch) -> None:
     monkeypatch.setenv("TMDB_API_KEY", "fake-key")
 
     def raise_tmdb_error(mood: str):
@@ -88,13 +118,13 @@ def test_recommend_csv_falls_back_to_mock_catalog_when_tmdb_fails(monkeypatch) -
     monkeypatch.setattr("backend.app.main.tmdb_client.fetch_candidates", raise_tmdb_error)
 
     headers = _auth_headers("tmdbfallback")
-    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+    response = _post_zip(headers)
 
     assert response.status_code == 200
     assert response.json()["recommendations"]
 
 
-def test_recommend_csv_carries_poster_and_overview_fields(monkeypatch) -> None:
+def test_recommend_zip_carries_poster_and_overview_fields(monkeypatch) -> None:
     monkeypatch.setenv("TMDB_API_KEY", "fake-key")
 
     def fake_fetch_candidates(mood: str):
@@ -114,10 +144,8 @@ def test_recommend_csv_carries_poster_and_overview_fields(monkeypatch) -> None:
     monkeypatch.setattr("backend.app.main.tmdb_client.fetch_candidates", fake_fetch_candidates)
 
     headers = _auth_headers("posterfields")
-    response = client.post(
-        "/recommend/csv",
-        headers=headers,
-        json={"csv_content": "Name,Rating,Review\nWhiplash,4.5,psychological and intense"},
+    response = _post_zip(
+        headers, ratings_csv="Name,Rating,Review\nWhiplash,4.5,psychological and intense"
     )
 
     assert response.status_code == 200
@@ -128,17 +156,19 @@ def test_recommend_csv_carries_poster_and_overview_fields(monkeypatch) -> None:
     assert item["vote_average"] == 7.4
 
 
-def test_recommend_csv_uses_gemini_refinement_when_configured(monkeypatch) -> None:
+def test_recommend_zip_uses_gemini_refinement_when_configured(monkeypatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
 
     def fake_refine(ratings, mood, heuristic):
         picked = heuristic.recommendations[0].model_copy(update={"why": "elegido por el agente"})
-        return heuristic.model_copy(update={"taste_summary": "resumen del agente", "recommendations": [picked]})
+        return heuristic.model_copy(
+            update={"taste_summary": "resumen del agente", "recommendations": [picked]}
+        )
 
     monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", fake_refine)
 
     headers = _auth_headers("geminiok")
-    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+    response = _post_zip(headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -148,7 +178,7 @@ def test_recommend_csv_uses_gemini_refinement_when_configured(monkeypatch) -> No
     assert body["recommendations"][0]["id"] is not None
 
 
-def test_recommend_csv_falls_back_to_heuristic_when_gemini_fails(monkeypatch) -> None:
+def test_recommend_zip_falls_back_to_heuristic_when_gemini_fails(monkeypatch) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
 
     def raise_llm_error(ratings, mood, heuristic):
@@ -157,7 +187,7 @@ def test_recommend_csv_falls_back_to_heuristic_when_gemini_fails(monkeypatch) ->
     monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", raise_llm_error)
 
     headers = _auth_headers("geminifallback")
-    response = client.post("/recommend/csv", headers=headers, json={"csv_content": VALID_CSV})
+    response = _post_zip(headers)
 
     assert response.status_code == 200
     assert response.json()["recommendations"]
@@ -165,9 +195,7 @@ def test_recommend_csv_falls_back_to_heuristic_when_gemini_fails(monkeypatch) ->
 
 def test_feedback_rejects_invalid_status() -> None:
     headers = _auth_headers("badstatus")
-    picks = client.post(
-        "/recommend/csv", headers=headers, json={"csv_content": VALID_CSV}
-    ).json()["recommendations"]
+    picks = _post_zip(headers).json()["recommendations"]
 
     response = client.post(
         "/feedback",

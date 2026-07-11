@@ -18,7 +18,7 @@ Chequeo básico del backend.
 
 ## Auth
 
-Todo lo que toca datos de usuario (`/recommend/csv`, `/feedback`) requiere
+Todo lo que toca datos de usuario (`/recommend/zip`, `/feedback`) requiere
 sesión. La sesión es un token opaco, no JWT: se guarda en la tabla `sessions`
 y se manda como header `Authorization: Bearer <token>`.
 
@@ -74,23 +74,25 @@ persiste nada — quedó igual que antes, sin uso desde el frontend.
 }
 ```
 
-## `POST /recommend/csv`
+## `POST /recommend/zip`
 
-Endpoint usado por la web. **Requiere auth.**
+Endpoint usado por la web. **Requiere auth.** Recibe el `.zip` completo que
+exporta Letterboxd (no JSON — es `multipart/form-data`, porque un zip es
+binario). Ver [letterboxd-zip-format.md](letterboxd-zip-format.md) para el
+detalle de qué archivos lee adentro del zip.
 
 ### Headers
 
 ```
 Authorization: Bearer <token>
+Content-Type: multipart/form-data
 ```
 
-### Body
+### Body (form fields)
 
-```json
-{
-  "mood": "psychological",
-  "csv_content": "Name,Rating,Review\nEnemy,4.5,psychological and weird in a good way"
-}
+```
+mood: psychological
+file: <el .zip como binario>
 ```
 
 ### Response
@@ -112,7 +114,9 @@ Authorization: Bearer <token>
 }
 ```
 
-`400` si el CSV no se puede parsear o no tiene filas válidas.
+`400` si el archivo no termina en `.zip`, si supera 20MB, si no es un zip
+válido, si no tiene `ratings.csv` ni `reviews.csv` adentro, o si algún CSV
+interno viene mal formado.
 
 Cada rating importado y cada recomendación servida quedan persistidos en
 SQLite, asociados al usuario autenticado.

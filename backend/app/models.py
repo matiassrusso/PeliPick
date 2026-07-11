@@ -14,11 +14,6 @@ class RecommendRequest(BaseModel):
     ratings: list[RatedItem] = Field(default_factory=list)
 
 
-class CsvRecommendRequest(BaseModel):
-    mood: str = ""
-    csv_content: str = Field(min_length=1)
-
-
 class Recommendation(BaseModel):
     id: int | None = None
     title: str
