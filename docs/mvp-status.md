@@ -65,16 +65,18 @@
     Drizzle/MySQL, el auth OAuth y el LLM de esa plataforma
   - la página de historial ya está, pero es una primera pasada: revisita
     picks y resumen; no recupera el zip original ni analytics más finos
-  - el modal de detalle de película no tiene cast ni tráiler (pediría un
-    fetch extra por película a TMDb)
+  - el modal de detalle de película no muestra cast ni tráiler todavía —
+    el backend ya está (`GET /movies/{tmdb_id}/details`, `tmdb_id` viaja
+    por todo el pipeline), falta conectar el frontend
 
 ## Falta para un MVP más serio
 
 - perfil de gusto visual (radar de géneros, heatmap de décadas, directores/
   actores favoritos) — necesita matchear cada título del CSV del usuario
   contra TMDb, no es trivial con exports grandes
-- cast y tráiler en el detalle de cada película — necesita empezar a
-  guardar el id real de TMDb por título, que hoy no viaja por el pipeline
+- cast y tráiler en el modal: falta el fetch desde el frontend al abrirse
+  (`GET /movies/{tmdb_id}/details?kind=...`, ya implementado y testeado
+  en el backend — ver `docs/api.md`)
 - import de historial por username de Letterboxd (scraping), como alternativa
   al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - soportar `Tags` de usuario del zip cuando estén presentes

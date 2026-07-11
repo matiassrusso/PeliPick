@@ -219,6 +219,33 @@ usuario autenticado, ordenadas de la más nueva a la más vieja.
 
 Si el usuario no tiene historial todavía, devuelve `200` con `sessions: []`.
 
+## `GET /movies/{tmdb_id}/details`
+
+Requiere auth. Devuelve cast (top 10) y key de YouTube del tráiler para una
+película o serie de TMDb. **No implementado en el frontend todavía** — el
+backend está listo y testeado, pero el modal de detalle no lo pide todavía.
+
+### Query params
+
+- `kind`: `movie` (default) o `series`
+
+### Response
+
+```json
+{
+  "cast": [
+    {"name": "Actor", "character": "Personaje", "profile_path": "https://image.tmdb.org/t/p/w185/..."}
+  ],
+  "trailer_key": "youtube-video-key"
+}
+```
+
+`trailer_key` es `null` si no hay tráiler oficial en YouTube. `503` si no
+hay `TMDB_API_KEY` configurada, `502` si TMDb falla.
+
+Solo funciona para recomendaciones que vinieron del catálogo real de TMDb —
+las del catálogo mock no tienen `tmdb_id` (viene `null` en `Recommendation`).
+
 ## `POST /feedback`
 
 Requiere auth. Guarda feedback explícito sobre un pick ya servido.

@@ -1,5 +1,10 @@
 # TASKS.md
 
+> Nota: esto es un artefacto de proceso interno (coordinación entre agentes
+> de IA trabajando en paralelo), no documentación de producto. Para
+> entender qué es PeliPick y cómo correrlo, ver [README.md](README.md); para
+> el estado real del producto, ver [docs/mvp-status.md](docs/mvp-status.md).
+
 Coordinación entre agentes trabajando en paralelo sobre este repo, cada uno
 en su propio worktree/branch. Reglas:
 
