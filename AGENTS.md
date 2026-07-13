@@ -31,6 +31,14 @@ Sé literal por default: si te pido un cambio en un componente específico, no l
 ### Autonomía
 Preferí que resuelvas de punta a punta con la info que te doy en el primer mensaje, en vez de ir preguntando de a poco. Si te falta un dato crítico, preguntame una sola cosa concreta, no una lista.
 
+### Trabajo en paralelo con Codex (vía task board)
+Cuando haya varias tareas independientes en el mismo proyecto, quiero que despaches trabajo en paralelo en vez de hacerlo todo en serie:
+1. Primero partí el trabajo en tasks concretas con `TaskCreate` (una por unidad de trabajo independiente; usá `addBlockedBy`/`addBlocks` si una depende de otra).
+2. Despachá cada task a un agente — Codex (vía el plugin de Codex, en background) o un subagente Claude — con instrucciones autocontenidas (no comparten contexto entre sí) e indicándole que reclame su task (`owner`), la marque `in_progress` al arrancar y `completed` al terminar.
+3. Si van a tocar el mismo repo al mismo tiempo, usá worktrees separados para que no choquen editando los mismos archivos — esto ya lo vengo haciendo a mano acá vía `TASKS.md`; el task board reemplaza/complementa ese archivo, no hace falta mantener los dos en paralelo si el board ya cubre la coordinación.
+
+Avisame cuando terminen; no me hagas ir a chequear yo, pero puedo pedirte `TaskList` en cualquier momento para ver el estado.
+
 ## Preferencias técnicas generales
 
 - **Stack por default:** FastAPI (Python) para backend, React + TypeScript + Vite para frontend. Railway para deploy de backend, Vercel para frontend.
@@ -57,3 +65,18 @@ Al pegar este doc en un `AGENTS.md` nuevo, agregar debajo una sección `## Conte
 4. Identidad visual/tokens de diseño si ya están definidos.
 
 Este documento base **no se toca por proyecto** — si algo acá deja de ser cierto (cambio de stack, cambio de forma de comunicarme), se actualiza acá y se propaga a todos.
+
+## Contexto del proyecto
+
+**PeliPick** — motor de recomendaciones de pelis/series basado en el gusto real de una persona (no en promedios genéricos). Stack: FastAPI + SQLite (backend), React + Vite + Tailwind (frontend, tema "cinematic"). Repo: [github.com/matiassrusso/PeliPick](https://github.com/matiassrusso/PeliPick). Todavía sin deploy — corre local (backend puerto 8001, frontend 4173).
+
+**Constraints técnicos:**
+- Requiere `TMDB_API_KEY` y `GEMINI_API_KEY` (free tier) en `backend/.env`
+- Recuperación de contraseña: el token de reset nunca sale de la respuesta salvo `PELIPICK_DEBUG=1` — no hay proveedor de mail real todavía
+- Workflow particular: coordinación multi-agente vía `TASKS.md` (varios agentes en worktrees separados) — leer ese archivo antes de tocar código
+
+**Estado actual** (detalle completo en `docs/mvp-status.md`):
+- Hecho: login real, catálogo TMDb con fallback a mock, agente Gemini que refina resumen/picks, import completo del `.zip` de Letterboxd, feedback explícito por pick, caché TMDb, historial de sesiones revisitables, 63 tests de backend
+- Falta: perfil de gusto visual (radar de géneros, heatmap de décadas), import por username de Letterboxd (scraping), envío real de mail para recuperación de contraseña, observabilidad mínima
+
+**Identidad visual:** tema "cinematic" — paleta ámbar/dorada, tipografía Instrument Serif + IBM Plex Sans, animaciones con Framer Motion. Detalle en `docs/design-directions.md`.
