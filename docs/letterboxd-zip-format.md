@@ -22,8 +22,8 @@ falta simplemente no aporta esa señal.
 Antes se pedía pegar o subir un solo CSV (`ratings.csv` o `reviews.csv`) a
 mano. El zip completo trae mucha más señal real de gusto (likes, rewatches,
 favoritos explícitos, historial completo de visto) que un solo archivo no
-tiene — ver el análisis en
-[pending-changes-2026-07-11.md](pending-changes-2026-07-11.md). Como
+tiene — ver las decisiones deliberadas en
+[architecture.md](architecture.md). Como
 además las columnas del export de Letterboxd son fijas (no hay variantes
 que adivinar, a diferencia de un CSV pegado a mano), no hace falta la
 lógica flexible de detección de columnas para estos archivos — igual se
@@ -68,9 +68,9 @@ parseable, se descarta (mismo comportamiento que antes).
 
 Código relacionado:
 
-- [backend/app/letterboxd_zip.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\letterboxd_zip.py)
-- [backend/app/csv_ingest.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\csv_ingest.py) (reusado para parsear `ratings.csv`/`reviews.csv`)
-- [backend/tests/test_letterboxd_zip.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\tests\test_letterboxd_zip.py)
+- [backend/app/letterboxd_zip.py](../backend/app/letterboxd_zip.py)
+- [backend/app/csv_ingest.py](../backend/app/csv_ingest.py) (reusado para parsear `ratings.csv`/`reviews.csv`)
+- [backend/tests/test_letterboxd_zip.py](../backend/tests/test_letterboxd_zip.py)
 
 ## Próximo endurecimiento
 

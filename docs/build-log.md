@@ -179,7 +179,7 @@ un solo CSV pegado a mano no tiene. Se decidió que el usuario suba el
 - fallback al resultado heurístico si Gemini falla, no está configurada, o
   devuelve picks fuera de la lista de candidatos — mismo patrón que TMDb
 - 7 tests nuevos (25 → 32), mockeando la llamada HTTP a mano
-- doc nueva: [gemini-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
+- doc nueva: [gemini-setup.md](gemini-setup.md)
 - se probó contra la API real con la key del usuario: `gemini-2.0-flash`
   devolvía cuota 0 en el free tier para esa key puntual, se cambió a
   `gemini-flash-latest` y ahí sí respondió — verificado end-to-end
@@ -221,8 +221,8 @@ un solo CSV pegado a mano no tiene. Se decidió que el usuario suba el
 
 ### Base del producto
 
-- se definió el MVP en [product-mvp.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\product-mvp.md)
-- se eligió la dirección visual `Crítico Moderno` en [design-directions.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\design-directions.md)
+- se definió el MVP en [product-mvp.md](product-mvp.md)
+- se eligió la dirección visual `Crítico Moderno` en [design-directions.md](design-directions.md)
 
 ### Vertical slice técnica
 

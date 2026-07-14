@@ -14,21 +14,21 @@ Motor de recomendaciones de pelis y series basado en el gusto real de una person
 
 Todavía no hay scraping de Letterboxd por username (el usuario sube el zip
 a mano). Ver
-[mvp-status.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\mvp-status.md) para el detalle.
+[mvp-status.md](docs/mvp-status.md) para el detalle.
 
 ## Estructura
 
-- [Producto y MVP](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\product-mvp.md)
-- [Direcciones visuales](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\design-directions.md)
-- [Arquitectura actual](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\architecture.md)
-- [Import del zip de Letterboxd](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\letterboxd-zip-format.md)
-- [Setup de TMDb](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\tmdb-setup.md)
-- [Setup de Gemini](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
-- [API actual](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\api.md)
-- [Estado del MVP](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\mvp-status.md)
-- [Build log](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\build-log.md)
-- [API principal](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\main.py)
-- [Frontend principal](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\App.tsx)
+- [Producto y MVP](docs/product-mvp.md)
+- [Direcciones visuales](docs/design-directions.md)
+- [Arquitectura actual](docs/architecture.md)
+- [Import del zip de Letterboxd](docs/letterboxd-zip-format.md)
+- [Setup de TMDb](docs/tmdb-setup.md)
+- [Setup de Gemini](docs/gemini-setup.md)
+- [API actual](docs/api.md)
+- [Estado del MVP](docs/mvp-status.md)
+- [Build log](docs/build-log.md)
+- [API principal](backend/app/main.py)
+- [Frontend principal](frontend/src/App.tsx)
 
 ## Cómo correrlo
 
@@ -61,10 +61,10 @@ npm.cmd run dev -- --host 127.0.0.1 --port 4173
 Nota:
 
 - uso `8001` por default porque en esta máquina `8000` ya estaba ocupado por otro backend
-- para el catálogo real necesitás `TMDB_API_KEY` en `backend/.env` — ver [tmdb-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\tmdb-setup.md)
-- para el agente de IA necesitás `GEMINI_API_KEY` (free tier) en `backend/.env` — ver [gemini-setup.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\gemini-setup.md)
+- para el catálogo real necesitás `TMDB_API_KEY` en `backend/.env` — ver [tmdb-setup.md](docs/tmdb-setup.md)
+- para el agente de IA necesitás `GEMINI_API_KEY` (free tier) en `backend/.env` — ver [gemini-setup.md](docs/gemini-setup.md)
 - el zip tiene que traer `ratings.csv` o `reviews.csv` adentro; el resto de
-  los archivos son opcionales — ver [letterboxd-zip-format.md](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\docs\letterboxd-zip-format.md)
+  los archivos son opcionales — ver [letterboxd-zip-format.md](docs/letterboxd-zip-format.md)
 
 ## Próximo paso lógico
 

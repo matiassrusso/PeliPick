@@ -278,7 +278,7 @@ no filtrar esa info).
 
 Código relacionado:
 
-- [backend/app/main.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\main.py)
-- [backend/app/models.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\models.py)
-- [backend/app/db.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\db.py)
-- [backend/app/auth.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\auth.py)
+- [backend/app/main.py](../backend/app/main.py)
+- [backend/app/models.py](../backend/app/models.py)
+- [backend/app/db.py](../backend/app/db.py)
+- [backend/app/auth.py](../backend/app/auth.py)

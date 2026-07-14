@@ -30,7 +30,7 @@ loader chico de `.env` que ya usaba `tmdb_client.py` (stdlib, sin sumar
 
 ## Cómo se usa
 
-- [backend/app/llm_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\llm_client.py)
+- [backend/app/llm_client.py](../backend/app/llm_client.py)
   pega contra `gemini-flash-latest:generateContent` (stdlib `urllib`, sin
   SDK) con `responseSchema` para forzar JSON estructurado. Se probó primero
   con `gemini-2.0-flash`, pero esa key tenía cuota free-tier en 0 para ese
@@ -38,7 +38,7 @@ loader chico de `.env` que ya usaba `tmdb_client.py` (stdlib, sin sumar
   sí tenía cuota disponible.
 - Recibe el historial parseado del CSV, el mood y los candidatos que ya
   filtró el recomendador heurístico (`recommend()` en
-  [recommender.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\recommender.py)).
+  [recommender.py](../backend/app/recommender.py)).
 - Le pide al modelo que elija y ordene como máximo 5 de esos candidatos
   (nunca inventa títulos nuevos — se descarta cualquier pick que no matchee
   por título exacto contra la lista) y que escriba un `taste_summary` y un

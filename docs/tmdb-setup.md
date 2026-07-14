@@ -31,7 +31,7 @@ de `.env` propio (stdlib, sin sumar `python-dotenv`).
 
 ## Cómo se usa
 
-- [backend/app/tmdb_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\tmdb_client.py)
+- [backend/app/tmdb_client.py](../backend/app/tmdb_client.py)
   pide candidatos a `/discover/movie` y a `/discover/tv` (populares,
   `vote_count.gte=200`, en inglés) y si el mood mapea a un género limpio en
   cada catálogo lo usa para sesgar la búsqueda (`funny`, `romance`, `action`,

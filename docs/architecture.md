@@ -48,15 +48,15 @@ backend entero y reconectamos las páginas a nuestro FastAPI vía `fetch` plano
 
 Páginas:
 
-- [frontend/src/pages/Home.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Home.tsx): landing
-- [frontend/src/pages/Login.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Login.tsx): login/registro
-- [frontend/src/pages/Recommend.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\Recommend.tsx): upload del zip + mood + resultados + feedback y detalle de cast/tráiler, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
-- [frontend/src/pages/History.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\History.tsx): historial de sesiones de recomendación revisitables
-- [frontend/src/pages/NotFound.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\pages\NotFound.tsx)
+- [frontend/src/pages/Home.tsx](../frontend/src/pages/Home.tsx): landing
+- [frontend/src/pages/Login.tsx](../frontend/src/pages/Login.tsx): login/registro
+- [frontend/src/pages/Recommend.tsx](../frontend/src/pages/Recommend.tsx): upload del zip + mood + resultados + feedback y detalle de cast/tráiler, todo en un solo flujo (fusiona lo que en el diseño original eran dos pasos separados)
+- [frontend/src/pages/History.tsx](../frontend/src/pages/History.tsx): historial de sesiones de recomendación revisitables
+- [frontend/src/pages/NotFound.tsx](../frontend/src/pages/NotFound.tsx)
 
 Estado compartido:
 
-- [frontend/src/hooks/useAuth.tsx](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\hooks\useAuth.tsx): Context de auth (token en `localStorage`, valida contra `GET /auth/me` al cargar)
+- [frontend/src/hooks/useAuth.tsx](../frontend/src/hooks/useAuth.tsx): Context de auth (token en `localStorage`, valida contra `GET /auth/me` al cargar)
 
 Deliberadamente no se portaron los componentes `shadcn/ui`/Radix del diseño
 original: ninguna de las páginas reales los usaba (confirmado leyendo el
@@ -64,25 +64,25 @@ código fuente), todo está armado con clases de Tailwind directas.
 
 Estilo:
 
-- [frontend/src/index.css](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\frontend\src\index.css)
+- [frontend/src/index.css](../frontend/src/index.css)
 
 ## Backend
 
 Entrada principal:
 
-- [backend/app/main.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\main.py)
+- [backend/app/main.py](../backend/app/main.py)
 
 Piezas actuales:
 
-- [backend/app/models.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\models.py): contratos de request/response
-- [backend/app/csv_ingest.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\csv_ingest.py): parser de un CSV individual (`Name`/`Title`/`Film`, etc.), reusado por `letterboxd_zip.py`
-- [backend/app/letterboxd_zip.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\letterboxd_zip.py): abre el zip del export, combina ratings/reviews/diary/likes/watched/profile
-- [backend/app/recommender.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\recommender.py): resumen y ranking heurístico
-- [backend/app/catalog.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\catalog.py): catálogo mock
-- [backend/app/db.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
-- [backend/app/auth.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\auth.py): hashing de password (PBKDF2, stdlib) y dependencia de sesión
-- [backend/app/tmdb_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\tmdb_client.py): cliente TMDb (stdlib `urllib`), mapea género + overview a tags propios
-- [backend/app/llm_client.py](C:\Users\matia\OneDrive\Escritorio\Webs\projects\pelipick\backend\app\llm_client.py): cliente Gemini (stdlib `urllib`), refina resumen y picks del heurístico
+- [backend/app/models.py](../backend/app/models.py): contratos de request/response
+- [backend/app/csv_ingest.py](../backend/app/csv_ingest.py): parser de un CSV individual (`Name`/`Title`/`Film`, etc.), reusado por `letterboxd_zip.py`
+- [backend/app/letterboxd_zip.py](../backend/app/letterboxd_zip.py): abre el zip del export, combina ratings/reviews/diary/likes/watched/profile
+- [backend/app/recommender.py](../backend/app/recommender.py): resumen y ranking heurístico
+- [backend/app/catalog.py](../backend/app/catalog.py): catálogo mock
+- [backend/app/db.py](../backend/app/db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
+- [backend/app/auth.py](../backend/app/auth.py): hashing de password (PBKDF2, stdlib) y dependencia de sesión
+- [backend/app/tmdb_client.py](../backend/app/tmdb_client.py): cliente TMDb (stdlib `urllib`), mapea género + overview a tags propios
+- [backend/app/llm_client.py](../backend/app/llm_client.py): cliente Gemini (stdlib `urllib`), refina resumen y picks del heurístico
 
 ## Decisiones deliberadas
 
