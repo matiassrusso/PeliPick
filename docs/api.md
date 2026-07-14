@@ -268,6 +268,42 @@ p. ej. subiste el zip dos veces — se queda con la fila más reciente).
 
 Si el usuario no subió ningún zip todavía, devuelve `200` con `items: []`.
 
+## `GET /profile/taste`
+
+Requiere auth. Arma el perfil de gusto visual: géneros (pesados por rating),
+décadas, y directores/actores favoritos, cruzando `rated_items` del usuario
+contra TMDb.
+
+`503` si no hay `TMDB_API_KEY` configurada.
+
+Acota el trabajo para que la carga no dependa de cientos de requests
+secuenciales a TMDb en exports grandes: matchea (búsqueda por título) los 150
+títulos mejor puntuados del usuario, y de esos pide créditos
+(director/cast) solo para los 50 mejores. `matched_count` informa cuántos
+títulos matchearon realmente contra `total_count` (el total de vistas del
+usuario) para que el frontend pueda avisar si el perfil quedó parcial.
+
+### Response
+
+```json
+{
+  "matched_count": 8,
+  "total_count": 10,
+  "genre_breakdown": [
+    {"genre": "Drama", "weight": 18.5}
+  ],
+  "decade_breakdown": [
+    {"decade": 2010, "count": 5}
+  ],
+  "top_directors": [
+    {"name": "Christopher Nolan", "count": 2}
+  ],
+  "top_actors": [
+    {"name": "Tom Hardy", "count": 1}
+  ]
+}
+```
+
 ## `GET /movies/{tmdb_id}/details`
 
 Requiere auth. Devuelve cast (top 10) y key de YouTube del tráiler para una

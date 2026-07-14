@@ -9,6 +9,7 @@ const NAV_ITEMS: GooeyNavItem[] = [
   { label: "Inicio", href: "/" },
   { label: "Recomendaciones", href: "/recommend" },
   { label: "Historial", href: "/history" },
+  { label: "Tu perfil", href: "/profile" },
 ];
 
 export function Navbar() {

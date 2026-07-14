@@ -432,3 +432,49 @@ def test_watched_history_deduplicates_reuploaded_titles() -> None:
     assert items[0]["title"] == "whiplash"
     assert items[0]["rating"] == 2.5
     assert items[0]["review"] == "latest review"
+
+
+def test_taste_profile_requires_auth() -> None:
+    response = client.get("/profile/taste")
+
+    assert response.status_code == 401
+
+
+def test_taste_profile_requires_tmdb_configured() -> None:
+    headers = _auth_headers("profilenotmdb")
+
+    response = client.get("/profile/taste", headers=headers)
+
+    assert response.status_code == 503
+
+
+def test_taste_profile_returns_genre_and_decade_breakdown(monkeypatch) -> None:
+    headers = _auth_headers("profileuser")
+    _post_zip(headers, ratings_csv="Name,Rating,Review\nMad Max: Fury Road,5,loved it")
+
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.taste_profile.tmdb_client.search_title",
+        lambda title: {
+            "tmdb_id": 76341,
+            "title": title,
+            "year": 2015,
+            "kind": "movie",
+            "genres": ["Acción"],
+        },
+    )
+    monkeypatch.setattr(
+        "backend.app.taste_profile.tmdb_client.fetch_taste_credits",
+        lambda tmdb_id, kind: {"director": "George Miller", "actors": ["Tom Hardy"]},
+    )
+
+    response = client.get("/profile/taste", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["matched_count"] == 1
+    assert body["total_count"] == 1
+    assert body["genre_breakdown"] == [{"genre": "Acción", "weight": 5.0}]
+    assert body["decade_breakdown"] == [{"decade": 2010, "count": 1}]
+    assert body["top_directors"] == [{"name": "George Miller", "count": 1}]
+    assert body["top_actors"] == [{"name": "Tom Hardy", "count": 1}]

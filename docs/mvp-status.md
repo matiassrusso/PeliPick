@@ -51,11 +51,20 @@
   que quede siempre centrado en el viewport sin importar el scroll de la
   página al abrirlo (antes se cortaba si la página no estaba scrolleada
   arriba)
-- tests de backend (85, incluyendo auth, feedback, historial, TMDb, Gemini, el
+- perfil de gusto visual (`/profile`): radar de géneros (pesado por rating,
+  no solo por cantidad), heatmap de décadas, y top de directores/actores —
+  matchea el historial "vistas" del usuario contra TMDb (`GET
+  /profile/taste`). Acotado a los 150 títulos mejor puntuados para el
+  match de género/año y a los 50 mejores de esos para pedir créditos
+  (director/cast), para que la carga no dependa de cientos de requests
+  secuenciales en exports grandes; la UI avisa cuántos títulos matcheó
+  sobre el total. Sin librería de gráficos nueva: radar y heatmap son SVG
+  a mano
+- tests de backend (97, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd, rate
   limiting/reset de contraseña, la caché de TMDb, los 3 modos de
-  recomendación + kind_filter, el historial de vistas, y la
-  personalización del "why")
+  recomendación + kind_filter, el historial de vistas, la
+  personalización del "why", y el perfil de gusto visual)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /
@@ -88,9 +97,6 @@
 
 ## Falta para un MVP más serio
 
-- perfil de gusto visual (radar de géneros, heatmap de décadas, directores/
-  actores favoritos) — necesita matchear cada título del CSV del usuario
-  contra TMDb, no es trivial con exports grandes
 - import de historial por username de Letterboxd (scraping), como alternativa
   al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - soportar `Tags` de usuario del zip cuando estén presentes

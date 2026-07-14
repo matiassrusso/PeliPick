@@ -96,3 +96,27 @@ class CastMember(BaseModel):
 class MovieDetails(BaseModel):
     cast: list[CastMember]
     trailer_key: str | None = None
+
+
+class GenreWeight(BaseModel):
+    genre: str
+    weight: float
+
+
+class DecadeCount(BaseModel):
+    decade: int
+    count: int
+
+
+class PersonCount(BaseModel):
+    name: str
+    count: int
+
+
+class TasteProfileResponse(BaseModel):
+    matched_count: int
+    total_count: int
+    genre_breakdown: list[GenreWeight]
+    decade_breakdown: list[DecadeCount]
+    top_directors: list[PersonCount]
+    top_actors: list[PersonCount]

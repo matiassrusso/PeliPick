@@ -6,6 +6,8 @@ from backend.app import tmdb_client
 @pytest.fixture(autouse=True)
 def clear_tmdb_cache() -> None:
     tmdb_client._DISCOVER_CACHE.clear()
+    tmdb_client._SEARCH_CACHE.clear()
+    tmdb_client._TASTE_CREDITS_CACHE.clear()
 
 
 def test_fetch_candidates_requires_api_key(monkeypatch) -> None:
@@ -284,4 +286,103 @@ def test_fetch_trailer_key_returns_none_when_no_trailer(monkeypatch) -> None:
     monkeypatch.setattr(tmdb_client, "_get_json", lambda url: {"results": []})
 
     assert tmdb_client.fetch_trailer_key(1) is None
+
+
+def test_search_title_requires_api_key(monkeypatch) -> None:
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+
+    with pytest.raises(tmdb_client.TmdbError):
+        tmdb_client.search_title("Anything")
+
+
+def test_search_title_matches_movie_first(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "search/movie" in url
+        return {
+            "results": [
+                {
+                    "id": 99,
+                    "title": "Fake Drama",
+                    "release_date": "2015-06-01",
+                    "genre_ids": [18, 53],
+                }
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    match = tmdb_client.search_title("fake drama")
+
+    assert match == {
+        "tmdb_id": 99,
+        "title": "Fake Drama",
+        "year": 2015,
+        "kind": "movie",
+        "genres": ["Drama", "Thriller"],
+    }
+
+
+def test_search_title_falls_back_to_tv_when_no_movie_match(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        if "search/movie" in url:
+            return {"results": []}
+        assert "search/tv" in url
+        return {
+            "results": [
+                {"id": 7, "name": "Fake Show", "first_air_date": "2010-01-01", "genre_ids": [35]}
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    match = tmdb_client.search_title("fake show")
+
+    assert match is not None
+    assert match["kind"] == "series"
+    assert match["genres"] == ["Comedia"]
+
+
+def test_search_title_caches_result(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        return {"results": [{"id": 1, "title": "X", "release_date": "2000-01-01", "genre_ids": []}]}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    tmdb_client.search_title("X")
+    tmdb_client.search_title("x")  # case-insensitive cache hit
+
+    assert len(calls) == 1
+
+
+def test_fetch_taste_credits_extracts_director_and_top_cast(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/movie/42/credits" in url
+        return {
+            "crew": [
+                {"job": "Producer", "name": "Someone Else"},
+                {"job": "Director", "name": "The Director"},
+            ],
+            "cast": [
+                {"name": "Third", "order": 2},
+                {"name": "First", "order": 0},
+                {"name": "Second", "order": 1},
+                {"name": "Fourth", "order": 3},
+            ],
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    credits = tmdb_client.fetch_taste_credits(42, kind="movie")
+
+    assert credits == {"director": "The Director", "actors": ["First", "Second", "Third"]}
 

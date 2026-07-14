@@ -33,11 +33,6 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Pending
 
-- [ ] [perfil-001] Perfil de gusto visual (radar de géneros, heatmap de
-      décadas, directores/actores favoritos) — scope grande, necesita
-      matchear el historial del usuario contra TMDb y una página nueva con
-      gráficos | owner: none | depende_de: -
-
 ## In Progress
 
 ## Blocked
@@ -46,6 +41,28 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [perfil-001] Perfil de gusto visual: radar de géneros, décadas y
+      directores/actores favoritos, matcheando el historial "vistas" del
+      usuario contra TMDb | owner: claude | archivos:
+      `backend/app/tmdb_client.py` (`GENRE_ID_NAME_MAP`/`TV_GENRE_ID_NAME_MAP`,
+      `search_title` con caché de 24h por título, `fetch_taste_credits` para
+      director + top-3 cast), `backend/app/taste_profile.py` (nuevo,
+      `build_taste_profile`), `backend/app/models.py`
+      (`TasteProfileResponse` y afines), `backend/app/main.py`
+      (`GET /profile/taste`), tests nuevos en `test_tmdb_client.py`,
+      `test_taste_profile.py`, `test_main.py`, `frontend/src/pages/Profile.tsx`
+      (nuevo, radar SVG + heatmap de décadas + listas de directores/actores,
+      sin librería de gráficos), `frontend/src/App.tsx` y
+      `frontend/src/components/Navbar.tsx` (ruta y link `/profile`). Cap
+      deliberado: matchea hasta 150 títulos (los mejor puntuados primero) y
+      pide créditos (director/cast) solo para los 50 mejores de esos, para
+      que la carga no dependa de cientos de requests secuenciales a TMDb en
+      exports grandes — motivo documentado con comentario `ponytail:` en
+      `taste_profile.py`. 97 tests de backend en verde (85→97), build de
+      frontend limpio, verificado en vivo con TMDb real: 10 títulos
+      sembrados vía `/recommend/zip`, perfil resultante mostró 8 géneros, 4
+      décadas y directores/actores correctos (Christopher Nolan, George
+      Miller, Bong Joon Ho, etc.).
 - [x] [scroll-001] Modal de detalle cortado cuando la página no está
       scrolleada arriba: `PageTransition` (framer-motion) siempre aplica
       `transform`/`filter` inline aunque estén "en reposo", lo que rompe el

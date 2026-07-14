@@ -82,7 +82,60 @@ MOOD_TV_GENRE_ID_MAP: dict[str, int] = {
     "action": 10759,
 }
 
+# Same TMDb genre ids as above, but mapped to their real display name
+# instead of our internal tag vocabulary — used by the taste profile, where
+# "Drama" reads better to the user than "character".
+GENRE_ID_NAME_MAP: dict[int, str] = {
+    28: "Acción",
+    12: "Aventura",
+    16: "Animación",
+    35: "Comedia",
+    80: "Crimen",
+    99: "Documental",
+    18: "Drama",
+    10751: "Familia",
+    14: "Fantasía",
+    36: "Historia",
+    27: "Terror",
+    10402: "Música",
+    9648: "Misterio",
+    10749: "Romance",
+    878: "Ciencia ficción",
+    10770: "TV Movie",
+    53: "Thriller",
+    10752: "Bélica",
+    37: "Western",
+}
+
+TV_GENRE_ID_NAME_MAP: dict[int, str] = {
+    10759: "Acción y aventura",
+    16: "Animación",
+    35: "Comedia",
+    80: "Crimen",
+    99: "Documental",
+    18: "Drama",
+    10751: "Familia",
+    10762: "Infantil",
+    9648: "Misterio",
+    10763: "Noticias",
+    10764: "Reality",
+    10765: "Ciencia ficción y fantasía",
+    10766: "Telenovela",
+    10767: "Talk show",
+    10768: "Bélica y política",
+    37: "Western",
+}
+
+SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
+SEARCH_TV_URL = "https://api.themoviedb.org/3/search/tv"
+# a title's matched genres/year/credits don't change, so these are cached
+# much longer than discover pages
+TITLE_CACHE_TTL_SECONDS = 24 * 60 * 60
+TITLE_CACHE_MAX_ENTRIES = 500
+
 _DISCOVER_CACHE: OrderedDict[tuple[str, str, int], tuple[float, list[dict]]] = OrderedDict()
+_SEARCH_CACHE: OrderedDict[str, tuple[float, dict | None]] = OrderedDict()
+_TASTE_CREDITS_CACHE: OrderedDict[tuple[str, int], tuple[float, dict]] = OrderedDict()
 
 
 class TmdbError(Exception):
@@ -290,3 +343,103 @@ def fetch_trailer_key(tmdb_id: int, kind: str = "movie") -> str | None:
         return None
     trailers.sort(key=lambda video: not video.get("official", False))
     return trailers[0]["key"]
+
+
+def _search_one(url: str, kind: str, genre_name_map: dict[int, str], title: str, api_key: str) -> dict | None:
+    params = {"api_key": api_key, "query": title, "language": "en-US", "include_adult": "false"}
+    data = _get_json(f"{url}?{urllib.parse.urlencode(params)}")
+    results = data.get("results", [])
+    if not results:
+        return None
+
+    raw = results[0]
+    title_field = "title" if kind == "movie" else "name"
+    date_field = "release_date" if kind == "movie" else "first_air_date"
+    date_value = raw.get(date_field) or ""
+    if len(date_value) < 4:
+        return None
+    try:
+        year = int(date_value[:4])
+    except ValueError:
+        return None
+
+    genres = sorted({genre_name_map[gid] for gid in raw.get("genre_ids", []) if gid in genre_name_map})
+    return {
+        "tmdb_id": raw.get("id"),
+        "title": (raw.get(title_field) or "").strip(),
+        "year": year,
+        "kind": kind,
+        "genres": genres,
+    }
+
+
+def search_title(title: str) -> dict | None:
+    """Best-effort match of a free-text (e.g. Letterboxd) title against TMDb:
+    tries movie search first, then TV. Cached for a day since a title's
+    genres/year don't change."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    cache_key = title.strip().lower()
+    if not cache_key:
+        return None
+
+    cached = _SEARCH_CACHE.get(cache_key)
+    if cached is not None:
+        expires_at, result = cached
+        if expires_at > _now_monotonic():
+            _SEARCH_CACHE.move_to_end(cache_key)
+            return result.copy() if result else None
+        del _SEARCH_CACHE[cache_key]
+
+    result = _search_one(SEARCH_URL, "movie", GENRE_ID_NAME_MAP, title, api_key)
+    if result is None:
+        result = _search_one(SEARCH_TV_URL, "series", TV_GENRE_ID_NAME_MAP, title, api_key)
+
+    _SEARCH_CACHE[cache_key] = (_now_monotonic() + TITLE_CACHE_TTL_SECONDS, result)
+    _SEARCH_CACHE.move_to_end(cache_key)
+    while len(_SEARCH_CACHE) > TITLE_CACHE_MAX_ENTRIES:
+        _SEARCH_CACHE.popitem(last=False)
+
+    return result.copy() if result else None
+
+
+def fetch_taste_credits(tmdb_id: int, kind: str = "movie") -> dict:
+    """Director + top-3 billed cast for one title, for the taste profile
+    aggregation. Kept separate from fetch_credits (used by the detail modal)
+    so that function's tested shape doesn't have to change."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    cache_key = (kind, tmdb_id)
+    cached = _TASTE_CREDITS_CACHE.get(cache_key)
+    if cached is not None:
+        expires_at, result = cached
+        if expires_at > _now_monotonic():
+            _TASTE_CREDITS_CACHE.move_to_end(cache_key)
+            return result
+        del _TASTE_CREDITS_CACHE[cache_key]
+
+    endpoint = _tmdb_endpoint_kind(kind)
+    url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/credits?api_key={api_key}"
+    data = _get_json(url)
+
+    director = next(
+        (
+            member["name"]
+            for member in data.get("crew", [])
+            if member.get("job") == "Director" and member.get("name")
+        ),
+        None,
+    )
+    cast = sorted(data.get("cast", []), key=lambda member: member.get("order", 999))
+    actors = [member["name"] for member in cast if member.get("name")][:3]
+
+    result = {"director": director, "actors": actors}
+    _TASTE_CREDITS_CACHE[cache_key] = (_now_monotonic() + TITLE_CACHE_TTL_SECONDS, result)
+    _TASTE_CREDITS_CACHE.move_to_end(cache_key)
+    while len(_TASTE_CREDITS_CACHE) > TITLE_CACHE_MAX_ENTRIES:
+        _TASTE_CREDITS_CACHE.popitem(last=False)
+    return result

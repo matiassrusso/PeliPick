@@ -4,7 +4,7 @@ import sqlite3
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, catalog, db, letterboxd_zip, llm_client, tmdb_client
+from . import auth, catalog, db, letterboxd_zip, llm_client, taste_profile, tmdb_client
 from .models import (
     AuthResponse,
     FeedbackRequest,
@@ -15,6 +15,7 @@ from .models import (
     PasswordResetStartResponse,
     RecommendRequest,
     RecommendResponse,
+    TasteProfileResponse,
     UserCredentials,
     WatchedHistoryResponse,
 )
@@ -142,6 +143,17 @@ def watched_history(
     user: sqlite3.Row = Depends(auth.get_current_user),
 ) -> WatchedHistoryResponse:
     return WatchedHistoryResponse(items=db.get_watched_items(user["id"]))
+
+
+@app.get("/profile/taste", response_model=TasteProfileResponse)
+def taste_profile_endpoint(
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> TasteProfileResponse:
+    if not tmdb_client.is_configured():
+        raise HTTPException(status_code=503, detail="Catálogo de TMDb no configurado.")
+
+    watched = db.get_watched_items(user["id"])
+    return TasteProfileResponse(**taste_profile.build_taste_profile(watched))
 
 
 @app.post("/recommend/zip", response_model=RecommendResponse)
