@@ -30,6 +30,58 @@ GENRE_OPTIONS: dict[str, list[str]] = {
     "scifi": ["stylized"],
 }
 
+# human-readable phrase per internal tag, used to build a "why" that names
+# what actually matched instead of a single fixed template sentence — this
+# is what makes the reason read as specific to that movie, not boilerplate
+TAG_PHRASES: dict[str, str] = {
+    "slow": "el ritmo pausado",
+    "quiet": "lo silencioso",
+    "melancholic": "la melancolía",
+    "intimate": "lo íntimo",
+    "psychological": "lo psicológico",
+    "mysterious": "el misterio",
+    "dark": "el tono oscuro",
+    "action": "la acción",
+    "kinetic": "el ritmo acelerado",
+    "blockbuster": "la escala de blockbuster",
+    "romantic": "el costado romántico",
+    "funny": "el humor",
+    "light": "el tono liviano",
+    "sharp": "lo filoso",
+    "loud": "la intensidad",
+    "character": "el foco en los personajes",
+    "stylized": "lo visualmente estilizado",
+    "dialogue-heavy": "los diálogos extensos",
+    "walking": "las caminatas largas",
+    "thriller": "el thriller",
+    "architectural": "la arquitectura",
+    "drama": "el drama",
+    "indie": "el espíritu indie",
+    "restless": "la inquietud",
+    "existential": "lo existencial",
+    "sad": "la tristeza",
+    "prestige": "la calidad prestige",
+    "mystery": "el misterio",
+    "messy": "el desorden emocional",
+}
+
+
+def _tag_phrases(tags: set[str]) -> str:
+    phrases = [TAG_PHRASES.get(tag, tag) for tag in sorted(tags)]
+    if len(phrases) == 1:
+        return phrases[0]
+    return ", ".join(phrases[:-1]) + " y " + phrases[-1]
+
+
+def _find_reference_title(ratings: list[RatedItem], matched_tags: set[str]) -> str | None:
+    # names the specific title from the user's own history that justifies
+    # the match, so the "why" reads as tied to their taste, not a template
+    loved = sorted((item for item in ratings if item.rating >= 4), key=lambda i: i.rating, reverse=True)
+    for item in loved:
+        if positive_tags_from_text(item.review) & matched_tags:
+            return item.title
+    return None
+
 
 def _normalize(text: str) -> str:
     return text.strip().lower()
@@ -164,15 +216,29 @@ def recommend(
         # no score floor here on purpose — we always want up to 5 picks when
         # the catalog has that many unseen candidates, even if some are weak
         # matches; the displayed match_score already tells the user how weak.
+        # reasons name the actual matched tags (and, when possible, the
+        # specific title from the user's own history behind the match)
+        # instead of a single fixed sentence, so two movies with different
+        # matches read as genuinely different picks, not the same template.
         reasons = []
-        if tags & positive_tags:
-            reasons.append("coincide con patrones que venís premiando")
-        if tags & set(mood_tags):
-            reasons.append("encaja con lo que querés hoy")
-        if required_any_tags and (tags & required_any_tags):
-            reasons.append("tiene los géneros que elegiste")
+        matched_positive = tags & positive_tags
+        matched_mood = tags & set(mood_tags)
+        matched_genre = tags & required_any_tags if required_any_tags else set()
+
+        if matched_positive:
+            reference = _find_reference_title(taste_ratings, matched_positive)
+            phrase = _tag_phrases(matched_positive)
+            if reference:
+                reasons.append(f"tira para {phrase}, como lo que valoraste en «{reference}»")
+            else:
+                reasons.append(f"tira para {phrase}, que es lo que venís premiando")
+        if matched_mood:
+            reasons.append(f"tiene {_tag_phrases(matched_mood)}, la vibra '{mood_text}' que pediste hoy")
+        if matched_genre:
+            reasons.append(f"cae dentro de {_tag_phrases(matched_genre)}, el género que elegiste")
         if not reasons:
-            reasons.append("tiene pinta de ser un buen riesgo para ampliar tu mapa")
+            own_phrase = _tag_phrases(set(item["tags"][:3]) or tags)
+            reasons.append(f"es una apuesta distinta, con aire a {own_phrase}, para ampliar tu mapa")
 
         scored.append(
             (

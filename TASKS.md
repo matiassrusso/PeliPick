@@ -46,6 +46,25 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [scroll-001] Modal de detalle cortado cuando la página no está
+      scrolleada arriba: `PageTransition` (framer-motion) siempre aplica
+      `transform`/`filter` inline aunque estén "en reposo", lo que rompe el
+      containing block de `position: fixed` para los descendientes — el
+      modal terminaba posicionado contra el alto completo de la página en
+      vez del viewport. Fix: `MovieModal` se renderiza vía React Portal a
+      `document.body` | owner: codex | archivos:
+      `frontend/src/pages/Recommend.tsx`. Verificado en vivo: el overlay
+      queda como hijo directo de `<body>` y su rect coincide exactamente
+      con el viewport sin importar el scroll de la página.
+- [x] [why-001] Personalización del mensaje "why" por usuario y por
+      película: antes eran frases plantilla fijas: ahora cita los tags
+      específicos que matchearon (traducidos a frases legibles) y, cuando
+      es posible, el título concreto del historial del usuario detrás del
+      match (ej. "como lo que valoraste en «Mad Max: Fury Road»"); el
+      mood también se menciona textualmente, y el fallback sin match varía
+      según los propios tags de la película | owner: claude | archivos:
+      `backend/app/recommender.py`, `backend/tests/test_recommender.py`.
+      85 tests de backend en verde. Verificado en vivo con TMDb real.
 - [x] [historial-002] Separar historial en "Vistas" (rated_items, deduplicado
       por título) y "Recomendadas" (lo ya existente) | owner: codex (3
       intentos por bloqueos de entorno del sandbox — worktree vacío sin

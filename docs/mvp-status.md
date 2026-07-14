@@ -43,10 +43,19 @@
 - historial separado en dos secciones: "Vistas" (`GET /history/watched`,
   películas ya vistas según el zip importado, deduplicadas por título) y
   "Recomendadas" (lo que ya había en `/history`)
-- tests de backend (81, incluyendo auth, feedback, historial, TMDb, Gemini, el
+- mensaje "why" del heurístico personalizado por película y por usuario:
+  cita los tags concretos que matchearon (no una plantilla fija) y, cuando
+  hay señal, el título específico del historial del usuario detrás del
+  match
+- modal de detalle renderizado vía React Portal a `document.body`, para
+  que quede siempre centrado en el viewport sin importar el scroll de la
+  página al abrirlo (antes se cortaba si la página no estaba scrolleada
+  arriba)
+- tests de backend (85, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd, rate
   limiting/reset de contraseña, la caché de TMDb, los 3 modos de
-  recomendación + kind_filter, y el historial de vistas)
+  recomendación + kind_filter, el historial de vistas, y la
+  personalización del "why")
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /

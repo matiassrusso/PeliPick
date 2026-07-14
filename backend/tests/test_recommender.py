@@ -170,6 +170,55 @@ def test_recommend_required_any_tags_guarantees_genre_coverage() -> None:
     assert len(response.recommendations) == 5
 
 
+def test_recommend_why_cites_specific_matched_tags_not_a_fixed_template() -> None:
+    # two movies matching different tags should read as genuinely different
+    # picks, not the same boilerplate sentence
+    catalog = [
+        {"title": "Dark One", "year": 2020, "kind": "movie", "tags": ["dark", "psychological"]},
+        {"title": "Funny One", "year": 2020, "kind": "movie", "tags": ["funny", "light"]},
+    ]
+    ratings = [
+        RatedItem(title="Old Dark Movie", rating=5, review="dark and psychological"),
+        RatedItem(title="Old Funny Movie", rating=5, review="funny and light"),
+    ]
+
+    response = recommend(ratings=ratings, mood="", catalog=catalog)
+
+    why_by_title = {item.title: item.why for item in response.recommendations}
+    assert why_by_title["Dark One"] != why_by_title["Funny One"]
+    assert "oscuro" in why_by_title["Dark One"] or "psicológico" in why_by_title["Dark One"]
+    assert "humor" in why_by_title["Funny One"]
+
+
+def test_recommend_why_cites_source_title_from_users_history() -> None:
+    catalog = [{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}]
+    ratings = [RatedItem(title="Perfect Blue", rating=5, review="psychological and dark")]
+
+    response = recommend(ratings=ratings, mood="", catalog=catalog)
+
+    assert "Perfect Blue" in response.recommendations[0].why
+
+
+def test_recommend_why_mentions_mood_word_when_mood_matches() -> None:
+    catalog = [{"title": "Romance Pick", "year": 2020, "kind": "movie", "tags": ["romantic"]}]
+
+    response = recommend(ratings=[], mood="romance", catalog=catalog)
+
+    assert "romance" in response.recommendations[0].why
+
+
+def test_recommend_why_fallback_varies_by_movies_own_tags() -> None:
+    catalog = [
+        {"title": "Unrelated A", "year": 2020, "kind": "movie", "tags": ["quiet"]},
+        {"title": "Unrelated B", "year": 2020, "kind": "movie", "tags": ["stylized"]},
+    ]
+
+    response = recommend(ratings=[], mood="", catalog=catalog)
+
+    why_by_title = {item.title: item.why for item in response.recommendations}
+    assert why_by_title["Unrelated A"] != why_by_title["Unrelated B"]
+
+
 def test_recommend_preference_ratings_overrides_taste_signal() -> None:
     catalog = [{"title": "Action Movie", "year": 2020, "kind": "movie", "tags": ["action"]}]
     all_ratings = [RatedItem(title="Old Movie", rating=1, review="boring and quiet")]
