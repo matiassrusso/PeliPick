@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -161,7 +162,7 @@ function MovieModal({
     };
   }, [rec.tmdb_id, rec.kind, token]);
 
-  return (
+  return createPortal(
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -315,7 +316,8 @@ function MovieModal({
           </div>
         </div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body,
   );
 }
 
