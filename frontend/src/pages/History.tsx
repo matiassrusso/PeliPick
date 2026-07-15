@@ -33,6 +33,7 @@ type WatchedItem = {
   rating: number;
   review: string;
   created_at: string;
+  watched_date: string;
 };
 
 function formatSessionDate(value: string): string {
@@ -43,6 +44,18 @@ function formatSessionDate(value: string): string {
         dateStyle: "medium",
         timeStyle: "short",
       });
+}
+
+// watched_date is a bare date (no time), unlike created_at — formatting it
+// through formatSessionDate would read it as UTC midnight and shift it to
+// the previous day in timezones behind UTC (e.g. Argentina), so this keeps
+// the display in UTC to match the literal date the user picked
+function formatWatchedDate(value: string): string {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString("es-AR", { dateStyle: "medium", timeZone: "UTC" });
 }
 
 export default function History() {
@@ -308,7 +321,9 @@ export default function History() {
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div>
                       <p className="text-xs uppercase tracking-widest text-primary mb-2">
-                        {formatSessionDate(item.created_at)}
+                        {item.watched_date
+                          ? formatWatchedDate(item.watched_date)
+                          : formatSessionDate(item.created_at)}
                       </p>
                       <h2
                         className="text-2xl font-serif leading-tight"

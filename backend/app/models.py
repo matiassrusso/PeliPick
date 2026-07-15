@@ -8,6 +8,7 @@ class RatedItem(BaseModel):
     rating: float = Field(ge=0, le=5)
     review: str = ""
     watched_date: str = ""
+    tags: list[str] = Field(default_factory=list)
 
 
 class RecommendRequest(BaseModel):
@@ -52,6 +53,7 @@ class WatchedItem(BaseModel):
     rating: float
     review: str
     created_at: str
+    watched_date: str = ""
 
 
 class WatchedHistoryResponse(BaseModel):

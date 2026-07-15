@@ -232,3 +232,23 @@ def test_recommend_preference_ratings_overrides_taste_signal() -> None:
     )
 
     assert response.recommendations[0].match_score > 50
+
+
+def test_recommend_uses_matching_user_tags_as_positive_signal() -> None:
+    response = recommend(
+        ratings=[RatedItem(title="Tagged Movie", rating=3, tags=[" DARK "])],
+        mood="",
+        catalog=[{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}],
+    )
+
+    assert response.recommendations[0].match_score > 50
+
+
+def test_recommend_ignores_user_tags_outside_internal_vocabulary() -> None:
+    response = recommend(
+        ratings=[RatedItem(title="Tagged Movie", rating=3, tags=["personal favorite"])],
+        mood="",
+        catalog=[{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}],
+    )
+
+    assert response.recommendations[0].match_score == 50

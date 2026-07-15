@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS rated_items (
     title TEXT NOT NULL,
     rating REAL NOT NULL,
     review TEXT NOT NULL DEFAULT '',
+    watched_date TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -97,6 +98,8 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
     if not _has_column(conn, "recommendations_served", "tmdb_id"):
         conn.execute("ALTER TABLE recommendations_served ADD COLUMN tmdb_id INTEGER")
+    if not _has_column(conn, "rated_items", "watched_date"):
+        conn.execute("ALTER TABLE rated_items ADD COLUMN watched_date TEXT NOT NULL DEFAULT ''")
 
 
 @contextmanager
@@ -219,13 +222,16 @@ def delete_password_reset_tokens_for_user(user_id: int) -> None:
         conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
 
 
-def save_rated_items(user_id: int, items: list[tuple[str, float, str]]) -> None:
+def save_rated_items(user_id: int, items: list[tuple[str, float, str, str]]) -> None:
     if not items:
         return
     with get_connection() as conn:
         conn.executemany(
-            "INSERT INTO rated_items (user_id, title, rating, review) VALUES (?, ?, ?, ?)",
-            [(user_id, title, rating, review) for title, rating, review in items],
+            "INSERT INTO rated_items (user_id, title, rating, review, watched_date) VALUES (?, ?, ?, ?, ?)",
+            [
+                (user_id, title, rating, review, watched_date)
+                for title, rating, review, watched_date in items
+            ],
         )
 
 
@@ -233,7 +239,7 @@ def get_watched_items(user_id: int) -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             """
-            SELECT title, rating, review, created_at
+            SELECT title, rating, review, watched_date, created_at
             FROM rated_items
             WHERE user_id = ?
             ORDER BY created_at DESC, id DESC

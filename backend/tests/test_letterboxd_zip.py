@@ -67,6 +67,40 @@ def test_parse_letterboxd_zip_boosts_rewatches() -> None:
     assert goodfellas.rating == 5.0  # already 5, clamped, not 5.5
 
 
+def test_parse_letterboxd_zip_reads_tags_from_diary_and_reviews() -> None:
+    reviews_csv = (
+        "Date,Name,Year,Letterboxd URI,Rating,Review,Tags\n"
+        "2024-09-28,GoodFellas,1990,https://boxd.it/29FA,5,great,action\n"
+        "2024-09-28,Taxi Driver,1976,https://boxd.it/2b8y,4,great,\" funny , , dark \"\n"
+    )
+    diary_csv = (
+        "Date,Name,Year,Letterboxd URI,Rating,Rewatch,Tags,Watched Date\n"
+        "2024-09-28,GoodFellas,1990,https://boxd.it/29FA,5,No,\" psychological , dark \",2024-09-28\n"
+    )
+
+    ratings, _ = letterboxd_zip.parse_letterboxd_zip(
+        _build_zip({"reviews.csv": reviews_csv, "diary.csv": diary_csv})
+    )
+
+    tags_by_title = {item.title: item.tags for item in ratings}
+    assert tags_by_title["GoodFellas"] == ["psychological", "dark"]
+    assert tags_by_title["Taxi Driver"] == ["funny", "dark"]
+
+
+def test_parse_letterboxd_zip_defaults_to_empty_tags_without_column() -> None:
+    empty_tags_reviews = (
+        "Date,Name,Year,Letterboxd URI,Rating,Review,Tags\n"
+        "2024-09-28,GoodFellas,1990,https://boxd.it/29FA,5,great,\n"
+    )
+    ratings, _ = letterboxd_zip.parse_letterboxd_zip(_build_zip({"ratings.csv": RATINGS_CSV}))
+    reviews, _ = letterboxd_zip.parse_letterboxd_zip(
+        _build_zip({"reviews.csv": empty_tags_reviews})
+    )
+
+    assert all(item.tags == [] for item in ratings)
+    assert reviews[0].tags == []
+
+
 def test_parse_letterboxd_zip_adds_liked_titles_not_already_rated() -> None:
     likes_csv = (
         "Date,Name,Year,Letterboxd URI\n"

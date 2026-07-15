@@ -236,7 +236,8 @@ async def recommend_titles_from_zip(
             pass
 
     db.save_rated_items(
-        user["id"], [(item.title, item.rating, item.review) for item in ratings]
+        user["id"],
+        [(item.title, item.rating, item.review, item.watched_date) for item in ratings],
     )
     session_id = db.create_recommendation_session(user["id"], mood, response.taste_summary)
     inserted_ids = db.save_recommendations(

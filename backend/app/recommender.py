@@ -121,10 +121,16 @@ def summarize_taste(ratings: list[RatedItem], mood: str) -> str:
 def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[str]]:
     positive_tags: Counter[str] = Counter()
     negative_tags: Counter[str] = Counter()
+    known_tags = set(TAG_PHRASES) | {
+        tag for hint_tags in POSITIVE_HINTS.values() for tag in hint_tags
+    }
 
     for item in ratings:
         review = _normalize(item.review)
         positive_tags.update(positive_tags_from_text(item.review))
+        positive_tags.update(
+            tag for user_tag in item.tags if (tag := _normalize(user_tag)) in known_tags
+        )
         if item.rating >= 4.5:
             positive_tags.update(POSITIVE_HINTS["funny"])
         for hint, tags in NEGATIVE_HINTS.items():

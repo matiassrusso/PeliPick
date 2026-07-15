@@ -260,11 +260,15 @@ p. ej. subiste el zip dos veces — se queda con la fila más reciente).
       "title": "Whiplash",
       "rating": 4.5,
       "review": "psychological and intense",
+      "watched_date": "2025-05-28",
       "created_at": "2026-07-14 12:03:41"
     }
   ]
 }
 ```
+
+`watched_date` viene de `diary.csv` cuando está disponible; si falta, llega
+vacío y el frontend muestra `created_at` como fallback.
 
 Si el usuario no subió ningún zip todavía, devuelve `200` con `items: []`.
 

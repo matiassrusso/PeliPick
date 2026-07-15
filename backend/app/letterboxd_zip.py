@@ -33,6 +33,10 @@ def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(content)))
 
 
+def _parse_tags(row: dict[str, str]) -> list[str]:
+    return [tag.strip() for tag in row.get("Tags", "").split(",") if tag.strip()]
+
+
 def parse_letterboxd_zip(data: bytes) -> tuple[list[RatedItem], set[str]]:
     try:
         zf = zipfile.ZipFile(io.BytesIO(data))
@@ -54,6 +58,11 @@ def parse_letterboxd_zip(data: bytes) -> tuple[list[RatedItem], set[str]]:
             _normalize(item.title): item for item in parse_ratings_csv(base_rows)
         }
 
+        for row in _read_csv(zf, "reviews.csv"):
+            existing = ratings_by_title.get(_normalize(row.get("Name", "")))
+            if existing:
+                existing.tags = _parse_tags(row)
+
         diary_rows = _read_csv(zf, DIARY_FILE)
         for row in diary_rows:
             key = _normalize(row.get("Name", ""))
@@ -67,6 +76,10 @@ def parse_letterboxd_zip(data: bytes) -> tuple[list[RatedItem], set[str]]:
             watched_date = row.get("Watched Date", "").strip()
             if watched_date:
                 existing.watched_date = watched_date
+            diary_tags = _parse_tags(row)
+            if diary_tags:
+                # Diary is the per-watch record, so its tags override review-level tags.
+                existing.tags = diary_tags
 
         likes_rows = _read_csv(zf, LIKES_FILE)
         for row in likes_rows:

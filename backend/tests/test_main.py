@@ -406,6 +406,27 @@ def test_watched_history_returns_items_from_uploaded_zip() -> None:
     assert items[0]["rating"] == 4.5
     assert items[0]["review"] == "psychological and intense"
     assert items[0]["created_at"]
+    assert items[0]["watched_date"] == ""
+
+
+def test_watched_history_returns_date_from_diary() -> None:
+    headers = _auth_headers("watcheddate")
+    diary_csv = (
+        "Date,Name,Year,Letterboxd URI,Rating,Rewatch,Tags,Watched Date\n"
+        "2025-06-01,Whiplash,2014,https://boxd.it/7bQA,4.5,No,,2025-05-28\n"
+    )
+    _post_zip(
+        headers,
+        zip_files={
+            "ratings.csv": "Name,Rating,Review\nWhiplash,4.5,psychological and intense",
+            "diary.csv": diary_csv,
+        },
+    )
+
+    response = client.get("/history/watched", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["watched_date"] == "2025-05-28"
 
 
 def test_watched_history_excludes_other_users_items() -> None:

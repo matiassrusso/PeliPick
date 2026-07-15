@@ -13,6 +13,7 @@ dependencias) y lee estos archivos si están presentes:
 | `likes/films.csv` | agrega como rating sintético 4.5 cualquier título con ❤️ que no esté ya puntuado |
 | `watched.csv` | excluye de las recomendaciones todo lo ya visto, tenga rating o no (hoy solo excluíamos lo puntuado) |
 | `profile.csv` | resuelve `Favorite Films` (URIs tipo `boxd.it/xxxx`) cruzando contra `Letterboxd URI` de `watched.csv`, y las agrega como rating sintético 5.0 |
+| `diary.csv` / `reviews.csv` | usa `Tags` propios por film como señal positiva directa cuando coinciden con el vocabulario interno; si ambos los traen, prioriza `diary.csv` |
 
 Solo `reviews.csv`/`ratings.csv` es obligatorio — el resto es opcional, si
 falta simplemente no aporta esa señal.
@@ -48,9 +49,6 @@ parseable, se descarta (mismo comportamiento que antes).
 
 ## Qué NO soporta todavía
 
-- `Tags` propios que el usuario le pone a cada film en `diary.csv`/
-  `reviews.csv` (en la práctica casi nadie los usa, pero cuando existen son
-  señal de gusto directa — pendiente)
 - `comments.csv`, `likes/reviews.csv`, `likes/lists.csv` — evaluados,
   descartados por ser señal social y no de gusto propio
 - reportar qué filas se descartaron del CSV base
@@ -74,5 +72,4 @@ Código relacionado:
 
 ## Próximo endurecimiento
 
-- soportar `Tags` de usuario cuando estén presentes
 - reportar filas descartadas del CSV base
