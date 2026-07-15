@@ -77,3 +77,35 @@ def test_call_gemini_wraps_network_errors(monkeypatch) -> None:
 
     with pytest.raises(llm_client.LlmError):
         llm_client._call_gemini("prompt", "fake-key")
+
+
+def test_build_taste_digest_handles_empty_history() -> None:
+    assert llm_client._build_taste_digest([]) == "Sin historial todavía."
+
+
+def test_build_taste_digest_names_patterns_and_standout_titles() -> None:
+    ratings = [
+        RatedItem(title="Loved Dark One", rating=5, review="a dark and psychological ride"),
+        RatedItem(title="Loved Dark Two", rating=4.5, review="another dark, quiet story"),
+        RatedItem(title="Hated It", rating=1, review="boring and empty"),
+    ]
+
+    digest = llm_client._build_taste_digest(ratings)
+
+    assert "3 títulos puntuados" in digest
+    assert "promedio 3.5/5" in digest
+    assert "tono oscuro" in digest  # "dark" -> TAG_PHRASES
+    assert "Loved Dark One" in digest and "Loved Dark Two" in digest
+    assert "Le encantaron especialmente" in digest
+    assert "Hated It" in digest and "No le gustaron" in digest
+
+
+def test_build_prompt_includes_digest_and_grounding_instructions() -> None:
+    ratings = [RatedItem(title="Old Movie", rating=5, review="dark and psychological")]
+
+    prompt = llm_client._build_prompt(ratings, "funny", HEURISTIC)
+
+    assert "Perfil de gusto detectado:" in prompt
+    assert "Old Movie" in prompt
+    assert "nombre un patrón concreto" in prompt
+    assert "Fake Thriller" in prompt and "Fake Comedy" in prompt

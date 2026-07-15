@@ -15,7 +15,7 @@ If a session is drifting without moving hacia calidad de recomendación o clarid
 1. Definición corta del alcance (ver `docs/product-mvp.md`)
 2. Implementación en `backend` (FastAPI + SQLite) y/o `frontend` (React + Vite + Tailwind)
 3. Si hay varios agentes en paralelo: coordinación por `TASKS.md` (worktrees separados, marcar In Progress → Done, nunca mergear a `main` solo)
-4. Tests de backend en verde antes de cerrar (63 tests a la fecha)
+4. Tests de backend en verde antes de cerrar (97 tests a la fecha)
 5. Todavía sin deploy — se corre y valida local
 
 ## Key People
@@ -44,6 +44,6 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 ## Current Status
 
 > **Last updated:** 2026-07-14
-> **Status:** Activo, MVP funcional local. 81 tests de backend (sin commitear todavía: rediseño del flujo de recomendación con 3 modos + split películas/series, y split de historial en Vistas/Recomendadas). Último commit real: 2026-07-11 ("docs: correct backend test count").
+> **Status:** Activo, MVP funcional local. 105 tests de backend (sin commitear todavía: Tags de usuario del zip + fecha real de "visto" persistida, y prompt de Gemini enriquecido con perfil de gusto explícito — hecho en paralelo por Codex y Claude). Último commit real: 2026-07-14 ("feat: add visual taste profile..."), pusheado a `origin/main`.
 
-Detalle completo en `docs/mvp-status.md`. Pendiente: perfil de gusto visual, import por username de Letterboxd (scraping), envío real de mail para recuperación de contraseña, observabilidad mínima.
+Detalle completo en `docs/mvp-status.md`. Pendiente: import por username de Letterboxd (scraping), reportar filas descartadas del CSV base, envío real de mail para recuperación de contraseña, observabilidad mínima.

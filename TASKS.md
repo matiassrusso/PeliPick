@@ -41,6 +41,43 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [llm-001] Prompt de Gemini enriquecido: en vez de mandarle solo la
+      lista cruda de reseñas, se le arma un "perfil de gusto" explícito
+      (promedio, tags recurrentes en lo que más valoró, títulos que amó/odió)
+      y se endurecen las instrucciones para que la razón de cada pick nombre
+      un patrón concreto de ese perfil o del historial, no un elogio
+      genérico. Gemini sigue eligiendo solo entre los candidatos ya
+      filtrados por el heurístico — no rescorea ni trae títulos propios,
+      eso queda para una iteración futura si hace falta | owner: claude |
+      archivos: `backend/app/llm_client.py` (`_build_taste_digest`,
+      `_phrase_for_tags`, `_build_prompt` reescrito), tests nuevos en
+      `test_llm_client.py`. 105 tests de backend en verde (97→105 sumando
+      data-001). Verificado el contenido del prompt armado a mano
+      (perfil correcto con tags/títulos reales); una llamada real a Gemini
+      dio timeout de red en este entorno, no se pudo confirmar la
+      respuesta final del modelo en vivo.
+- [x] [data-001] Usar más señal del zip de Letterboxd: Tags propios del
+      usuario (diary.csv prioriza sobre reviews.csv si ambos los traen,
+      solo se suman como señal positiva si matchean el vocabulario interno
+      de tags) y fecha real de "visto" persistida (antes se parseaba desde
+      diary.csv pero se perdía al guardar en `rated_items`; la pestaña
+      "Vistas" mostraba la fecha de import, no la real) | owner: codex |
+      archivos: `backend/app/models.py` (`RatedItem.tags`,
+      `WatchedItem.watched_date`), `backend/app/letterboxd_zip.py`
+      (`_parse_tags`), `backend/app/db.py` (columna `watched_date` +
+      migración), `backend/app/main.py`, `backend/app/recommender.py`
+      (`_collect_preference_tags` suma tags de usuario que matchean
+      vocabulario), `frontend/src/pages/History.tsx`, tests en
+      `test_letterboxd_zip.py`, `test_recommender.py`, `test_main.py`,
+      docs (`letterboxd-zip-format.md`, `api.md`, `mvp-status.md`).
+      Bug encontrado y arreglado por Claude en revisión: `History.tsx`
+      reutilizaba `formatSessionDate` (pensada para timestamps con hora)
+      para `watched_date` (solo fecha) — al interpretarla como medianoche
+      UTC y mostrarla en hora local, en timezones detrás de UTC (Argentina,
+      UTC-3) el día mostrado quedaba corrido un día para atrás. Se agregó
+      `formatWatchedDate` con `timeZone: "UTC"` para mostrar el día literal.
+      Verificado en vivo: zip con diary.csv (Whiplash, Watched Date
+      2025-05-28) mostró "28 may 2025" en la pestaña Vistas.
 - [x] [perfil-001] Perfil de gusto visual: radar de géneros, décadas y
       directores/actores favoritos, matcheando el historial "vistas" del
       usuario contra TMDb | owner: claude | archivos:

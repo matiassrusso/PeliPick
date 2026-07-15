@@ -10,7 +10,7 @@
 - recomendador heurístico simple
 - ingesta del `.zip` completo del export de Letterboxd (no un CSV suelto):
   combina rating base, boost por rewatch, likes sin puntuar, favoritos
-  explícitos del perfil, y exclusión ampliada por todo lo visto — ver
+  explícitos del perfil, tags propios por film y exclusión ampliada por todo lo visto — ver
   `docs/letterboxd-zip-format.md`
 - login/registro real con passwords hasheadas (PBKDF2, stdlib) y sesiones por
   token opaco
@@ -60,11 +60,20 @@
   secuenciales en exports grandes; la UI avisa cuántos títulos matcheó
   sobre el total. Sin librería de gráficos nueva: radar y heatmap son SVG
   a mano
-- tests de backend (97, incluyendo auth, feedback, historial, TMDb, Gemini, el
-  desempate por score crudo, el parser del zip de Letterboxd, rate
-  limiting/reset de contraseña, la caché de TMDb, los 3 modos de
-  recomendación + kind_filter, el historial de vistas, la
-  personalización del "why", y el perfil de gusto visual)
+- fecha real de "visto" persistida: `watched_date` de `diary.csv` (antes se
+  parseaba pero se perdía al guardar) ahora se guarda en `rated_items` y la
+  pestaña "Vistas" la muestra en vez de la fecha de import, con fallback si
+  no hay diary.csv
+- prompt de Gemini enriquecido con un "perfil de gusto" explícito (promedio,
+  tags recurrentes en lo valorado, títulos que amó/odió) para que las
+  razones de cada pick nombren un patrón concreto del historial en vez de
+  un elogio genérico — sigue sin rescorear ni traer candidatos propios
+- tests de backend (105, incluyendo auth, feedback, historial, TMDb, Gemini, el
+  desempate por score crudo, el parser del zip de Letterboxd (incluyendo
+  Tags de usuario), rate limiting/reset de contraseña, la caché de TMDb, los
+  3 modos de recomendación + kind_filter, el historial de vistas con fecha
+  real, la personalización del "why" (heurístico y del agente Gemini), y el
+  perfil de gusto visual)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /
@@ -76,8 +85,8 @@
 - parser del zip de Letterboxd
   - lee `reviews.csv`/`ratings.csv`, `diary.csv`, `likes/films.csv`,
     `watched.csv`, `profile.csv`
-  - no usa `Tags` propios del usuario (raro que estén completos, pero son
-    señal directa cuando existen)
+  - usa `Tags` propios del usuario cuando coinciden directamente con el
+    vocabulario interno de recomendación
   - no reporta filas descartadas del CSV base
 
 - recomendación
@@ -99,7 +108,6 @@
 
 - import de historial por username de Letterboxd (scraping), como alternativa
   al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
-- soportar `Tags` de usuario del zip cuando estén presentes
 - reportar filas descartadas del CSV base
 - observabilidad mínima
 - envío real de mail para recuperación de contraseña (hoy el token nunca
