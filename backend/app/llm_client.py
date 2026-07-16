@@ -1,8 +1,9 @@
 import json
 import os
 import socket
+import time
 import urllib.request
-from collections import Counter
+from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import URLError
@@ -23,6 +24,18 @@ GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-3-flash", "g
 # for a trivial prompt, so a short timeout was silently discarding every
 # real call and falling back to the heuristic every time.
 REQUEST_TIMEOUT = 30
+
+# Same OrderedDict TTL+LRU idiom as tmdb_client's _DISCOVER_CACHE. Longer TTL
+# than that cache's 5 minutes: a refine result isn't time-sensitive the way
+# TMDb discover pages are (those can go stale as TMDb's charts shift), and
+# free-tier Gemini quota is the scarcer resource here, so it's worth holding
+# a hit longer. Keyed off mood + candidate set, not the ratings history, so a
+# regenerate with the same mood right after an import (which usually changes
+# the heuristic's candidates) still misses and gets a fresh "why".
+REFINE_CACHE_TTL_SECONDS = 15 * 60
+REFINE_CACHE_MAX_ENTRIES = 64
+
+_REFINE_CACHE: OrderedDict[tuple[str, tuple], tuple[float, dict]] = OrderedDict()
 
 _RESPONSE_SCHEMA = {
     "type": "OBJECT",
@@ -194,6 +207,39 @@ def _call_gemini(prompt: str, api_key: str) -> dict:
     raise last_error
 
 
+def _now_monotonic() -> float:
+    return time.monotonic()
+
+
+def _refine_cache_key(mood: str, heuristic: RecommendResponse) -> tuple[str, tuple]:
+    candidates = tuple(
+        rec.tmdb_id if rec.tmdb_id is not None else rec.title.strip().lower()
+        for rec in heuristic.recommendations
+    )
+    return (mood.strip().lower(), candidates)
+
+
+def _get_cached_refine(cache_key: tuple[str, tuple]) -> dict | None:
+    cached = _REFINE_CACHE.get(cache_key)
+    if cached is None:
+        return None
+
+    expires_at, result = cached
+    if expires_at <= _now_monotonic():
+        del _REFINE_CACHE[cache_key]
+        return None
+
+    _REFINE_CACHE.move_to_end(cache_key)
+    return result
+
+
+def _store_cached_refine(cache_key: tuple[str, tuple], result: dict) -> None:
+    _REFINE_CACHE[cache_key] = (_now_monotonic() + REFINE_CACHE_TTL_SECONDS, result)
+    _REFINE_CACHE.move_to_end(cache_key)
+    while len(_REFINE_CACHE) > REFINE_CACHE_MAX_ENTRIES:
+        _REFINE_CACHE.popitem(last=False)
+
+
 def refine_recommendations(
     ratings: list[RatedItem], mood: str, heuristic: RecommendResponse
 ) -> RecommendResponse:
@@ -203,7 +249,11 @@ def refine_recommendations(
     if not heuristic.recommendations:
         raise LlmError("No hay candidatos para refinar.")
 
-    result = _call_gemini(_build_prompt(ratings, mood, heuristic), api_key)
+    cache_key = _refine_cache_key(mood, heuristic)
+    result = _get_cached_refine(cache_key)
+    if result is None:
+        result = _call_gemini(_build_prompt(ratings, mood, heuristic), api_key)
+        _store_cached_refine(cache_key, result)
 
     by_title = {rec.title.strip().lower(): rec for rec in heuristic.recommendations}
     reordered = []

@@ -3,6 +3,17 @@ import pytest
 from backend.app import llm_client
 from backend.app.models import RatedItem, Recommendation, RecommendResponse
 
+
+@pytest.fixture(autouse=True)
+def _clear_refine_cache():
+    # module-global cache (same idiom as tmdb_client's _DISCOVER_CACHE) —
+    # clear between tests so one test's cached refine result can't leak into
+    # another test that reuses the same mood/candidates.
+    llm_client._REFINE_CACHE.clear()
+    yield
+    llm_client._REFINE_CACHE.clear()
+
+
 HEURISTIC = RecommendResponse(
     taste_summary="resumen heurístico",
     recommendations=[
@@ -136,3 +147,77 @@ def test_build_prompt_includes_digest_and_grounding_instructions() -> None:
     assert "Old Movie" in prompt
     assert "nombre un patrón concreto" in prompt
     assert "Fake Thriller" in prompt and "Fake Comedy" in prompt
+
+
+def _fake_gemini(call_count: list[int]):
+    def fake_call_gemini(prompt: str, api_key: str) -> dict:
+        call_count.append(1)
+        return {
+            "taste_summary": "resumen del agente",
+            "picks": [
+                {"title": "Fake Comedy", "why": "porque te reís poco últimamente"},
+                {"title": "Fake Thriller", "why": "porque te gusta lo oscuro"},
+            ],
+        }
+
+    return fake_call_gemini
+
+
+def test_refine_recommendations_caches_same_mood_and_candidates(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    calls: list[int] = []
+    monkeypatch.setattr(llm_client, "_call_gemini", _fake_gemini(calls))
+
+    first = llm_client.refine_recommendations([], "funny", HEURISTIC)
+    second = llm_client.refine_recommendations([], "funny", HEURISTIC)
+
+    assert len(calls) == 1  # second call served from cache, no new Gemini hit
+    assert first.taste_summary == second.taste_summary
+    assert [r.title for r in first.recommendations] == [r.title for r in second.recommendations]
+
+
+def test_refine_recommendations_cache_misses_on_different_mood(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    calls: list[int] = []
+    monkeypatch.setattr(llm_client, "_call_gemini", _fake_gemini(calls))
+
+    llm_client.refine_recommendations([], "funny", HEURISTIC)
+    llm_client.refine_recommendations([], "romance", HEURISTIC)
+
+    assert len(calls) == 2
+
+
+def test_refine_recommendations_cache_misses_on_different_candidates(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    calls: list[int] = []
+    monkeypatch.setattr(llm_client, "_call_gemini", _fake_gemini(calls))
+
+    other_heuristic = RecommendResponse(
+        taste_summary="otro resumen",
+        recommendations=[
+            Recommendation(
+                title="Fake Comedy", year=2019, kind="movie", why="heurística",
+                match_score=60, tags=["funny", "light"],
+            ),
+        ],
+    )
+
+    llm_client.refine_recommendations([], "funny", HEURISTIC)
+    llm_client.refine_recommendations([], "funny", other_heuristic)
+
+    assert len(calls) == 2
+
+
+def test_refine_recommendations_cache_expires_after_ttl(monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key")
+    calls: list[int] = []
+    monkeypatch.setattr(llm_client, "_call_gemini", _fake_gemini(calls))
+
+    fake_now = [1000.0]
+    monkeypatch.setattr(llm_client, "_now_monotonic", lambda: fake_now[0])
+
+    llm_client.refine_recommendations([], "funny", HEURISTIC)
+    fake_now[0] += llm_client.REFINE_CACHE_TTL_SECONDS + 1
+    llm_client.refine_recommendations([], "funny", HEURISTIC)
+
+    assert len(calls) == 2
