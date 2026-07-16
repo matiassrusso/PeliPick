@@ -670,15 +670,21 @@ def test_recommend_zip_persists_taste_profile_for_reuse(monkeypatch) -> None:
         "backend.app.taste_profile.tmdb_client.fetch_taste_credits",
         lambda tmdb_id, kind: {"director": "George Miller", "actors": ["Tom Hardy"]},
     )
-    monkeypatch.setattr(
-        "backend.app.main.tmdb_client.fetch_candidates",
-        lambda mood: [{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}],
-    )
+    seen_kind_filters: list[str] = []
+
+    def fake_personalized(profile, mood, kind_filter):
+        seen_kind_filters.append(kind_filter)
+        return [{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}]
+
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_personalized_candidates", fake_personalized)
 
     headers = _auth_headers("persistprofile")
-    response = _post_zip(headers, ratings_csv="Name,Rating,Review\nMad Max: Fury Road,5,loved it")
+    response = _post_zip(
+        headers, ratings_csv="Name,Rating,Review\nMad Max: Fury Road,5,loved it", kind_filter="series"
+    )
 
     assert response.status_code == 200
+    assert seen_kind_filters == ["series"]  # forwarded through, not hardcoded to "both"
     stored = db.get_taste_profile(db.get_user_by_username("persistprofile")["id"])
     assert stored is not None
     assert stored["genre_breakdown"] == [{"genre": "Acción", "weight": 5.0}]

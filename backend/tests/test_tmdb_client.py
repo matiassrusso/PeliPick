@@ -8,6 +8,8 @@ def clear_tmdb_cache() -> None:
     tmdb_client._DISCOVER_CACHE.clear()
     tmdb_client._SEARCH_CACHE.clear()
     tmdb_client._TASTE_CREDITS_CACHE.clear()
+    tmdb_client._PERSON_CACHE.clear()
+    tmdb_client._PERSONALIZED_CACHE.clear()
 
 
 def test_fetch_candidates_requires_api_key(monkeypatch) -> None:
@@ -361,6 +363,222 @@ def test_search_title_caches_result(monkeypatch) -> None:
     tmdb_client.search_title("x")  # case-insensitive cache hit
 
     assert len(calls) == 1
+
+
+def test_resolve_person_id_defaults_to_first_result_sorted_by_popularity(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        assert "search/person" in url
+        return {
+            "results": [
+                {"id": 1, "name": "James Smith", "known_for_department": "Acting", "popularity": 5.0},
+                {"id": 2, "name": "James Smith", "known_for_department": "Directing", "popularity": 1.0},
+            ]
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    assert tmdb_client._resolve_person_id("James Smith") == 1
+
+
+def test_resolve_person_id_filters_by_expected_department(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        tmdb_client,
+        "_get_json",
+        lambda url: {
+            "results": [
+                {"id": 1, "name": "James Smith", "known_for_department": "Acting", "popularity": 5.0},
+                {"id": 2, "name": "James Smith", "known_for_department": "Directing", "popularity": 1.0},
+            ]
+        },
+    )
+
+    assert tmdb_client._resolve_person_id("James Smith", expected_department="Directing") == 2
+
+
+def test_resolve_person_id_caches_result(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        return {"results": [{"id": 42, "known_for_department": "Directing", "popularity": 1.0}]}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    tmdb_client._resolve_person_id("Some Director")
+    tmdb_client._resolve_person_id("some director")  # case-insensitive cache hit
+
+    assert len(calls) == 1
+
+
+def test_fetch_personalized_candidates_biases_movie_discover_by_profile(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        if "search/person" in url:
+            return {"results": [{"id": 525, "known_for_department": "Directing", "popularity": 9.9}]}
+        if "discover/movie" in url:
+            return {
+                "results": [
+                    {
+                        "id": 1,
+                        "title": "Profile Movie",
+                        "release_date": "2010-01-01",
+                        "genre_ids": [18],
+                        "overview": "",
+                    }
+                ]
+            }
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+    monkeypatch.setattr(
+        tmdb_client, "fetch_taste_credits", lambda tmdb_id, kind="movie": {"director": "A Director", "actors": []}
+    )
+
+    profile = {
+        "genre_breakdown": [{"genre": "Drama", "weight": 10.0}],
+        "decade_breakdown": [{"decade": 2010, "count": 3}],
+        "top_directors": [{"name": "A Director", "count": 2}],
+        "top_actors": [],
+    }
+
+    candidates = tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="movie")
+
+    movie_call = next(url for url in calls if "discover/movie" in url)
+    assert "with_genres=18" in movie_call  # Drama -> 18
+    assert "with_people=525" in movie_call
+    assert "primary_release_date.gte=2000-01-01" in movie_call
+    assert "primary_release_date.lte=2029-12-31" in movie_call
+
+    profile_movie = next(c for c in candidates if c["title"] == "Profile Movie")
+    assert profile_movie["_source"] == "profile"
+    assert profile_movie["director"] == "A Director"
+
+
+def test_fetch_personalized_candidates_skips_with_people_for_series(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        if "search/person" in url:
+            return {"results": [{"id": 525, "known_for_department": "Acting", "popularity": 9.9}]}
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    profile = {
+        "genre_breakdown": [{"genre": "Drama", "weight": 10.0}],
+        "decade_breakdown": [],
+        "top_directors": [],
+        "top_actors": [{"name": "Some Actor", "count": 2}],
+    }
+
+    tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="series")
+
+    tv_call = next(url for url in calls if "discover/tv" in url)
+    assert "with_people" not in tv_call
+
+
+def test_fetch_personalized_candidates_falls_back_to_exploration_only_when_profile_has_no_signal(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        if "discover/movie" in url:
+            return {
+                "results": [
+                    {
+                        "id": 1,
+                        "title": "Explore Movie",
+                        "release_date": "2020-01-01",
+                        "genre_ids": [28],
+                        "overview": "",
+                    }
+                ]
+            }
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    profile = {"genre_breakdown": [], "decade_breakdown": [], "top_directors": [], "top_actors": []}
+    candidates = tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="both")
+
+    assert candidates
+    assert all(c["_source"] == "exploration" for c in candidates)
+
+
+def test_fetch_personalized_candidates_dedupes_profile_and_exploration_overlap(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_get_json(url: str) -> dict:
+        if "search/person" in url:
+            return {"results": []}
+        if "discover/movie" in url:
+            return {
+                "results": [
+                    {
+                        "id": 1,
+                        "title": "Same Movie",
+                        "release_date": "2015-01-01",
+                        "genre_ids": [18],
+                        "overview": "",
+                    }
+                ]
+            }
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+    monkeypatch.setattr(
+        tmdb_client, "fetch_taste_credits", lambda tmdb_id, kind="movie": {"director": None, "actors": []}
+    )
+
+    profile = {
+        "genre_breakdown": [{"genre": "Drama", "weight": 5.0}],
+        "decade_breakdown": [],
+        "top_directors": [],
+        "top_actors": [],
+    }
+    candidates = tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="movie")
+
+    titles = [c["title"] for c in candidates]
+    assert titles.count("Same Movie") == 1
+    assert candidates[0]["_source"] == "profile"  # profile copy wins over the exploration duplicate
+
+
+def test_fetch_personalized_candidates_caches_profile_discover_page(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    calls: list[str] = []
+
+    def fake_get_json(url: str) -> dict:
+        calls.append(url)
+        return {"results": []}
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+    monkeypatch.setattr(tmdb_client, "_now_monotonic", lambda: 100.0)
+
+    profile = {
+        "genre_breakdown": [{"genre": "Drama", "weight": 5.0}],
+        "decade_breakdown": [],
+        "top_directors": [],
+        "top_actors": [],
+    }
+
+    tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="movie")
+    calls_after_first = len(calls)
+    tmdb_client.fetch_personalized_candidates(profile, mood="", kind_filter="movie")
+
+    # both the profile-biased discover call (this module's own cache) and the
+    # exploration slice (fetch_candidates -> its own _DISCOVER_CACHE) hit
+    # cache on the second call with the same profile/mood/kind_filter
+    assert len(calls) == calls_after_first
 
 
 def test_fetch_taste_credits_extracts_director_and_top_cast(monkeypatch) -> None:

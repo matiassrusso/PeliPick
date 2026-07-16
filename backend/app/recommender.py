@@ -73,6 +73,21 @@ def _tag_phrases(tags: set[str]) -> str:
     return ", ".join(phrases[:-1]) + " y " + phrases[-1]
 
 
+def _profile_signals(profile: dict | None) -> tuple[set[str], set[str], int | None]:
+    # extracts the director/actor names and heaviest decade from a persisted
+    # taste profile (backend/app/taste_profile.py), for scoring candidates
+    # that tmdb_client.fetch_personalized_candidates already biased toward —
+    # None/empty profile (mock catalog, no TMDb, no signal yet) just yields
+    # no bonus anywhere, same as before this existed
+    if not profile:
+        return set(), set(), None
+    directors = {d["name"] for d in profile.get("top_directors", [])}
+    actors = {a["name"] for a in profile.get("top_actors", [])}
+    decades = profile.get("decade_breakdown", [])
+    top_decade = max(decades, key=lambda d: d["count"])["decade"] if decades else None
+    return directors, actors, top_decade
+
+
 def _find_reference_title(ratings: list[RatedItem], matched_tags: set[str]) -> str | None:
     # names the specific title from the user's own history that justifies
     # the match, so the "why" reads as tied to their taste, not a template
@@ -141,7 +156,7 @@ def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[st
 
 
 def _pick_with_genre_coverage(
-    scored: list[tuple[int, Recommendation, set[str]]],
+    scored: list[tuple[int, Recommendation, set[str], str]],
     required_any_tags: frozenset[str],
     limit: int = 5,
 ) -> list[Recommendation]:
@@ -162,12 +177,12 @@ def _pick_with_genre_coverage(
             None,
         )
         if match:
-            score, rec, tags = match
+            score, rec, tags, _source = match
             chosen.append((score, rec))
             chosen_ids.add(id(rec))
             covered.update(tags & required_any_tags)
 
-    for score, rec, _ in scored:
+    for score, rec, _tags, _source in scored:
         if len(chosen) >= limit:
             break
         if id(rec) in chosen_ids:
@@ -179,6 +194,33 @@ def _pick_with_genre_coverage(
     return [rec for _, rec in chosen]
 
 
+def _pick_with_exploration(
+    scored: list[tuple[int, Recommendation, set[str], str]],
+    limit: int = 5,
+    exploration_slots: int = 1,
+) -> list[Recommendation]:
+    # reserves a slot for the best-scoring candidate sourced from the
+    # unpersonalized "exploration" query (tmdb_client.fetch_personalized_
+    # candidates tags these "_source": "exploration") so a fully personalized
+    # pool doesn't collapse the picks into a single narrow taste bubble.
+    # Candidates without a "_source" (mock catalog, plain fetch_candidates)
+    # default to "profile" and are unaffected — same as plain top-N before.
+    exploration = [triple for triple in scored if triple[3] == "exploration"]
+    reserved = exploration[:exploration_slots]
+    reserved_ids = {id(triple[1]) for triple in reserved}
+
+    picks: list[tuple[int, Recommendation]] = [(triple[0], triple[1]) for triple in reserved]
+    for score, rec, _tags, _source in scored:
+        if len(picks) >= limit:
+            break
+        if id(rec) in reserved_ids:
+            continue
+        picks.append((score, rec))
+
+    picks.sort(key=lambda pair: pair[0], reverse=True)
+    return [rec for _, rec in picks]
+
+
 def recommend(
     ratings: list[RatedItem],
     mood: str,
@@ -187,14 +229,16 @@ def recommend(
     kind_filter: str = "both",
     required_any_tags: frozenset[str] | None = None,
     preference_ratings: list[RatedItem] | None = None,
+    profile: dict | None = None,
 ) -> RecommendResponse:
     taste_ratings = ratings if preference_ratings is None else preference_ratings
     positive_tags, negative_tags = _collect_preference_tags(taste_ratings)
     seen_titles = {_normalize(item.title) for item in ratings} | {_normalize(t) for t in also_seen}
     mood_text = _normalize(mood)
     mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
+    profile_directors, profile_actors, top_decade = _profile_signals(profile)
 
-    scored: list[tuple[int, Recommendation, set[str]]] = []
+    scored: list[tuple[int, Recommendation, set[str], str]] = []
     for item in catalog:
         if _normalize(item["title"]) in seen_titles:
             continue
@@ -214,6 +258,23 @@ def recommend(
 
         if item["kind"] == "series":
             score -= 8
+
+        # director/actor/decade signal from the persisted taste profile —
+        # tmdb_client.fetch_personalized_candidates already biased the pool
+        # toward these, this scores the actual per-candidate match on top so
+        # the "why" can name the specific person/decade behind the pick.
+        # item.get(...) is safe against candidates without this data (mock
+        # catalog, series, exploration slice): no match, no bonus.
+        matched_director = item.get("director") if item.get("director") in profile_directors else None
+        matched_actors = set(item.get("actors") or []) & profile_actors
+        item_decade = (item["year"] // 10) * 10
+        matched_decade = top_decade is not None and item_decade == top_decade
+
+        if matched_director:
+            score += 18
+        score += 9 * len(matched_actors)
+        if matched_decade:
+            score += 6
 
         # no score floor here on purpose — we always want up to 5 picks when
         # the catalog has that many unseen candidates, even if some are weak
@@ -241,9 +302,24 @@ def recommend(
             reasons.append(f"tiene {_tag_phrases(matched_mood)}, la vibra '{mood_text}' que pediste hoy")
         if matched_genre:
             reasons.append(f"cae dentro de {_tag_phrases(matched_genre)}, el género que elegiste")
+        if matched_director:
+            reasons.append(f"la dirige {matched_director}, uno de tus directores más repetidos")
+        if matched_actors:
+            reasons.append(f"tiene a {', '.join(sorted(matched_actors))}, que ya te viene gustando")
+        if matched_decade:
+            reasons.append(f"es de los {top_decade}s, la década que más consumís")
         if not reasons:
-            own_phrase = _tag_phrases(set(item["tags"][:3]) or tags)
-            reasons.append(f"es una apuesta distinta, con aire a {own_phrase}, para ampliar tu mapa")
+            # bug found while adding director/actor scoring: a candidate with
+            # genuinely no tags at all (possible for a hand-authored catalog
+            # entry, even though tmdb_client._map_result filters those out of
+            # the real TMDb pipeline) made _tag_phrases IndexError on an
+            # empty set — falls back to a tag-free sentence instead of crashing.
+            candidate_tags = set(item["tags"][:3]) or tags
+            if candidate_tags:
+                own_phrase = _tag_phrases(candidate_tags)
+                reasons.append(f"es una apuesta distinta, con aire a {own_phrase}, para ampliar tu mapa")
+            else:
+                reasons.append("es una apuesta distinta para ampliar tu mapa")
 
         scored.append(
             (
@@ -262,6 +338,7 @@ def recommend(
                     vote_average=item.get("vote_average"),
                 ),
                 tags,
+                item.get("_source", "profile"),
             )
         )
 
@@ -270,12 +347,12 @@ def recommend(
     # clamped value would make ties fall back to catalog order (movies
     # always listed before series), silently starving series out of the
     # top 5 even when they scored just as well.
-    scored.sort(key=lambda triple: triple[0], reverse=True)
+    scored.sort(key=lambda quad: quad[0], reverse=True)
 
     if required_any_tags:
         picks = _pick_with_genre_coverage(scored, required_any_tags)
     else:
-        picks = [recommendation for _, recommendation, _ in scored[:5]]
+        picks = _pick_with_exploration(scored)
 
     return RecommendResponse(
         taste_summary=summarize_taste(taste_ratings, mood),

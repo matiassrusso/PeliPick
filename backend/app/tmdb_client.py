@@ -126,6 +126,12 @@ TV_GENRE_ID_NAME_MAP: dict[int, str] = {
     37: "Western",
 }
 
+# inverse of the maps above (display name -> TMDb id), needed to go from the
+# taste profile's genre_breakdown (which stores display names, e.g. "Drama")
+# back to a TMDb genre id for the personalized discover query
+GENRE_NAME_ID_MAP: dict[str, int] = {name: gid for gid, name in GENRE_ID_NAME_MAP.items()}
+TV_GENRE_NAME_ID_MAP: dict[str, int] = {name: gid for gid, name in TV_GENRE_ID_NAME_MAP.items()}
+
 SEARCH_URL = "https://api.themoviedb.org/3/search/movie"
 SEARCH_TV_URL = "https://api.themoviedb.org/3/search/tv"
 # a title's matched genres/year/credits don't change, so these are cached
@@ -136,6 +142,12 @@ TITLE_CACHE_MAX_ENTRIES = 500
 _DISCOVER_CACHE: OrderedDict[tuple[str, str, int], tuple[float, list[dict]]] = OrderedDict()
 _SEARCH_CACHE: OrderedDict[str, tuple[float, dict | None]] = OrderedDict()
 _TASTE_CREDITS_CACHE: OrderedDict[tuple[str, int], tuple[float, dict]] = OrderedDict()
+_PERSON_CACHE: OrderedDict[str, tuple[float, int | None]] = OrderedDict()
+_PERSONALIZED_CACHE: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
+
+# ponytail: matches a single discover page's worth of movie candidates; raise
+# if latency allows enriching more per personalized recommend request.
+CREDITS_ENRICH_CAP = 20
 
 
 class TmdbError(Exception):
@@ -458,3 +470,182 @@ def fetch_taste_credits(tmdb_id: int, kind: str = "movie") -> dict:
     while len(_TASTE_CREDITS_CACHE) > TITLE_CACHE_MAX_ENTRIES:
         _TASTE_CREDITS_CACHE.popitem(last=False)
     return result
+
+
+def _resolve_person_id(name: str, expected_department: str | None = None) -> int | None:
+    """Resolves a free-text name (a top director/actor from the taste
+    profile) to a TMDb person_id, for use in a with_people discover filter.
+    TMDb already returns /search/person results sorted by popularity
+    descending, so results[0] is a reasonable default; filtering by
+    known_for_department first (confirmed via docs/(C) research-tmdb-
+    discover-personalization.md) cheaply avoids the rare case where an
+    unrelated, more-popular homonym outranks the actual match. Cached 24h
+    like search_title, since a person's id never changes."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    cache_key = f"{name.strip().lower()}::{expected_department or ''}"
+    cached = _PERSON_CACHE.get(cache_key)
+    if cached is not None:
+        expires_at, result = cached
+        if expires_at > _now_monotonic():
+            _PERSON_CACHE.move_to_end(cache_key)
+            return result
+        del _PERSON_CACHE[cache_key]
+
+    params = {"api_key": api_key, "query": name, "language": "en-US", "include_adult": "false"}
+    data = _get_json(f"https://api.themoviedb.org/3/search/person?{urllib.parse.urlencode(params)}")
+    results = data.get("results", [])
+    if expected_department:
+        results = [r for r in results if r.get("known_for_department") == expected_department] or results
+    person_id = results[0]["id"] if results else None
+
+    _PERSON_CACHE[cache_key] = (_now_monotonic() + TITLE_CACHE_TTL_SECONDS, person_id)
+    _PERSON_CACHE.move_to_end(cache_key)
+    while len(_PERSON_CACHE) > TITLE_CACHE_MAX_ENTRIES:
+        _PERSON_CACHE.popitem(last=False)
+    return person_id
+
+
+def _get_cached_personalized(cache_key: tuple) -> list[dict] | None:
+    cached = _PERSONALIZED_CACHE.get(cache_key)
+    if cached is None:
+        return None
+    expires_at, items = cached
+    if expires_at <= _now_monotonic():
+        del _PERSONALIZED_CACHE[cache_key]
+        return None
+    _PERSONALIZED_CACHE.move_to_end(cache_key)
+    return _clone_items(items)
+
+
+def _store_cached_personalized(cache_key: tuple, items: list[dict]) -> None:
+    _PERSONALIZED_CACHE[cache_key] = (_now_monotonic() + CACHE_TTL_SECONDS, _clone_items(items))
+    _PERSONALIZED_CACHE.move_to_end(cache_key)
+    while len(_PERSONALIZED_CACHE) > CACHE_MAX_ENTRIES:
+        _PERSONALIZED_CACHE.popitem(last=False)
+
+
+def _fetch_personalized_discover(
+    url: str,
+    kind: str,
+    genre_tag_map: dict[int, list[str]],
+    genre_ids: list[int],
+    person_ids: list[int],
+    decade: int | None,
+    api_key: str,
+) -> list[dict]:
+    # confirmed empirically (docs/(C) research-tmdb-discover-personalization.md):
+    # pipe within a param is OR (any of these genres/people), different
+    # with_*/date params combine with AND — so genre OR + people OR + a soft
+    # decade window all narrow together in a single request, no need to
+    # split into one request per filter.
+    cache_key = (kind, tuple(sorted(genre_ids)), tuple(sorted(person_ids)), decade)
+    cached = _get_cached_personalized(cache_key)
+    if cached is not None:
+        return cached
+
+    params = {
+        "api_key": api_key,
+        "language": "en-US",
+        "sort_by": "vote_average.desc",
+        "vote_count.gte": 200,
+        "include_adult": "false",
+        "page": 1,
+    }
+    if genre_ids:
+        params["with_genres"] = "|".join(str(gid) for gid in genre_ids)
+    if person_ids:
+        params["with_people"] = "|".join(str(pid) for pid in person_ids)
+    if decade is not None:
+        date_field = "primary_release_date" if kind == "movie" else "first_air_date"
+        # soft bias, not a hard filter: the favorite decade plus one on
+        # either side, so this doesn't narrow the pool down to almost nothing
+        params[f"{date_field}.gte"] = f"{decade - 10}-01-01"
+        params[f"{date_field}.lte"] = f"{decade + 19}-12-31"
+
+    data = _get_json(f"{url}?{urllib.parse.urlencode(params)}")
+    mapped = [
+        result
+        for raw in data.get("results", [])
+        if (result := _map_result(raw, kind, genre_tag_map)) is not None
+    ]
+    for item in mapped:
+        item["_source"] = "profile"
+
+    _store_cached_personalized(cache_key, mapped)
+    return mapped
+
+
+def fetch_personalized_candidates(profile: dict, mood: str, kind_filter: str = "both") -> list[dict]:
+    """Builds the candidate pool from the user's persisted taste profile
+    (top genres, directors/actors, favorite decade) instead of TMDb's global
+    top-rated list, so two users with different tastes see different pools.
+    Movie candidates get enriched with director/cast (for recommender.py's
+    scoring) since with_people only works on /discover/movie (confirmed in
+    the research doc — /discover/tv silently ignores it). Always mixes in a
+    small unpersonalized "exploration" slice (reusing fetch_candidates
+    as-is) so the pool doesn't fully collapse into the user's existing taste
+    bubble; recommender.py reserves a pick slot for it via the "_source" tag."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    genre_names = [g["genre"] for g in profile.get("genre_breakdown", [])[:3]]
+    decade_breakdown = profile.get("decade_breakdown", [])
+    top_decade = max(decade_breakdown, key=lambda d: d["count"])["decade"] if decade_breakdown else None
+
+    person_candidates = [(d["name"], "Directing") for d in profile.get("top_directors", [])[:3]]
+    person_candidates += [(a["name"], "Acting") for a in profile.get("top_actors", [])[:3]]
+    person_ids: list[int] = []
+    for name, department in person_candidates:
+        try:
+            person_id = _resolve_person_id(name, department)
+        except TmdbError:
+            continue
+        if person_id is not None:
+            person_ids.append(person_id)
+
+    has_profile_signal = bool(genre_names) or bool(person_ids) or top_decade is not None
+
+    candidates: list[dict] = []
+
+    if has_profile_signal and kind_filter in ("movie", "both"):
+        movie_genre_ids = [GENRE_NAME_ID_MAP[name] for name in genre_names if name in GENRE_NAME_ID_MAP]
+        movies = _fetch_personalized_discover(
+            DISCOVER_URL, "movie", GENRE_ID_TAG_MAP, movie_genre_ids, person_ids, top_decade, api_key
+        )
+        for item in movies[:CREDITS_ENRICH_CAP]:
+            try:
+                credits = fetch_taste_credits(item["tmdb_id"], kind="movie")
+            except TmdbError:
+                continue
+            item["director"] = credits["director"]
+            item["actors"] = credits["actors"]
+        candidates.extend(movies)
+
+    if has_profile_signal and kind_filter in ("series", "both"):
+        # with_people isn't supported on /discover/tv (confirmed empirically
+        # — the param is silently ignored), so series only get genre/decade bias
+        tv_genre_ids = [TV_GENRE_NAME_ID_MAP[name] for name in genre_names if name in TV_GENRE_NAME_ID_MAP]
+        series = _fetch_personalized_discover(
+            DISCOVER_TV_URL, "series", TV_GENRE_ID_TAG_MAP, tv_genre_ids, [], top_decade, api_key
+        )
+        candidates.extend(series)
+
+    exploration = fetch_candidates(mood, pages=1)
+    for item in exploration:
+        item["_source"] = "exploration"
+    candidates.extend(exploration)
+
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict] = []
+    for item in candidates:
+        key = (item["kind"], item["title"].strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+
+    return deduped

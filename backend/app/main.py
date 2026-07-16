@@ -222,10 +222,36 @@ def _finish_recommend(
 
     _enrich_loved_ratings_with_genre_tags(ratings)
 
+    # save ratings before computing the taste profile (moved up from the end
+    # of this function) so the profile reflects this import and can bias
+    # *this* request's own candidates below, not just future ones — see
+    # docs/(C) plan-de-trabajo.md §4 for why this used to run too late.
+    db.save_rated_items(
+        user["id"],
+        [(item.title, item.rating, item.review, item.watched_date) for item in ratings],
+    )
+
+    # Guarded broadly: this is a personalization/caching side effect, not the
+    # point of the request — a TMDb hiccup (or a mocked search_title missing
+    # fields it expects, see TASKS.md) should degrade to the unpersonalized
+    # pool below, not fail an otherwise-servable recommend call.
+    profile: dict | None = None
+    if tmdb_client.is_configured():
+        try:
+            watched = db.get_watched_items(user["id"])
+            profile = taste_profile.build_taste_profile(watched)
+            db.save_taste_profile(user["id"], profile)
+        except Exception:
+            logger.warning("Taste profile computation failed, falling back to unpersonalized candidates", exc_info=True)
+            profile = None
+
     candidates = catalog.CATALOG
     if tmdb_client.is_configured():
         try:
-            candidates = tmdb_client.fetch_candidates(mood)
+            if profile and profile.get("genre_breakdown"):
+                candidates = tmdb_client.fetch_personalized_candidates(profile, mood, kind_filter)
+            else:
+                candidates = tmdb_client.fetch_candidates(mood)
         except tmdb_client.TmdbError as exc:
             logger.warning("TMDb candidates fetch failed, falling back to mock catalog: %s", exc)
             candidates = catalog.CATALOG
@@ -262,6 +288,7 @@ def _finish_recommend(
         kind_filter=kind_filter,
         required_any_tags=required_any_tags or None,
         preference_ratings=preference_ratings,
+        profile=profile,
     )
 
     if llm_client.is_configured():
@@ -270,23 +297,6 @@ def _finish_recommend(
         except llm_client.LlmError as exc:
             logger.warning("Gemini refine failed, falling back to heuristic why: %s", exc)
 
-    db.save_rated_items(
-        user["id"],
-        [(item.title, item.rating, item.review, item.watched_date) for item in ratings],
-    )
-    # persist the taste profile once per import instead of leaving it to be
-    # recomputed (~200 TMDb requests) on every /profile/taste load or future
-    # personalized-candidate lookup — recompute here since watched history
-    # just changed; skip if TMDb isn't configured (nothing to match against).
-    # Guarded broadly: this is a caching side effect, not the point of the
-    # request — a TMDb hiccup here shouldn't fail a recommend call that
-    # already succeeded.
-    if tmdb_client.is_configured():
-        try:
-            watched = db.get_watched_items(user["id"])
-            db.save_taste_profile(user["id"], taste_profile.build_taste_profile(watched))
-        except Exception:
-            logger.warning("Taste profile persistence failed, will retry on next import", exc_info=True)
     session_id = db.create_recommendation_session(user["id"], mood, response.taste_summary)
     inserted_ids = db.save_recommendations(
         session_id,

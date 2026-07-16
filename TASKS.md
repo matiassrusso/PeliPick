@@ -41,6 +41,96 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [motor-fase1-003/004/005] Cierre de la Fase 1 del motor
+      (`docs/(C) plan-de-trabajo.md` §4): los candidatos ahora salen del
+      gusto real del usuario, no del top global de TMDb. Implementado en una
+      sola sesión (sin subagentes ni worktrees — secuencial, con
+      dependencias reales entre los 3 pasos):
+      - **#3 `fetch_personalized_candidates`** | archivos:
+        `backend/app/tmdb_client.py` (`GENRE_NAME_ID_MAP`/
+        `TV_GENRE_NAME_ID_MAP` inversos, `_resolve_person_id` vía
+        `/search/person` cacheado 24h, `_fetch_personalized_discover`
+        cacheado 5 min por huella de perfil, `fetch_personalized_candidates`
+        combina géneros OR + personas OR + década ±1 en una sola query por
+        kind — `with_people` solo aplica a `/discover/movie`, confirmado en
+        `docs/(C) research-tmdb-discover-personalization.md` que
+        `/discover/tv` lo ignora en silencio — más una porción de
+        exploración sin personalizar vía `fetch_candidates` reusado tal
+        cual, todo deduplicado por `(kind, título)`). Enriquece hasta 20
+        candidatos de película con director/cast (`fetch_taste_credits`,
+        mismo caché que ya usaba `taste_profile.py`) para que el scoring
+        (#5) tenga con qué comparar.
+      - **`backend/app/main.py`** (`_finish_recommend`): corregida la
+        secuencia que había quedado pendiente de #2 — `save_rated_items` y
+        el cómputo del perfil ahora ocurren *antes* de traer candidatos (no
+        después), así que incluso la primera recomendación de un usuario
+        nuevo ya sale personalizada, no solo las siguientes. Cae a
+        `fetch_candidates` sin personalizar cuando el perfil no tiene
+        `genre_breakdown` (usuario sin match a TMDb, o error de red —
+        guardado con el mismo `try/except Exception` amplio que ya traía #2).
+      - **#4 mezcla con exploración** | archivo: `backend/app/recommender.py`
+        (`_pick_with_exploration`, reserva 1 slot de los 5 para el
+        mejor-puntuado con `_source: "exploration"`, así el pool
+        personalizado no se cierra del todo sobre el mismo gusto).
+      - **#5 scoring por director/actor/década** | mismo archivo
+        (`_profile_signals` extrae directores/actores/década pesada del
+        perfil persistido; +18 puntos por director match, +9 por actor,
+        +6 por década — mismo orden de magnitud que los bonus de tags
+        existentes; el "why" nombra la persona/década concreta cuando fue
+        el motivo real, no un genérico).
+      - **Bug encontrado y arreglado en el camino** (no relacionado a la
+        feature en sí): `_tag_phrases` tiraba `IndexError` si un candidato
+        no tenía ningún tag — nunca se disparaba porque
+        `tmdb_client._map_result` ya filtra esos casos del pipeline real,
+        pero es alcanzable por cualquier catalog dict sin tags (ej. mock
+        catalog a mano) y lo expusieron los tests nuevos. Arreglado en el
+        fallback de `recommend()`, no en `_tag_phrases` (los demás call
+        sites ya vienen guardados con `if matched_xxx:`).
+      Tests: 134 → 148 (14 nuevos: 8 en `test_tmdb_client.py`, 6 en
+      `test_recommender.py`, 1 test existente en `test_main.py` corregido
+      para no depender de que la red real falle rápido). Owner: claude,
+      pedido explícito del usuario de hacerlas todas en una sola sesión en
+      vez de repartir con Codex/subagentes esta vez.
+
+- [x] [motor-fase1-001/002/006] Primera ronda de la Fase 1 del motor
+      (`docs/(C) plan-de-trabajo.md` §4): tres tasks independientes
+      despachadas en paralelo, cada una en su worktree, ya mergeadas a `main`
+      (fast-forward + merge commit, sin conflictos):
+      - **#1 research** (sin código): confirmado en vivo contra la API real
+        de TMDb que `with_genres`/`with_people` usan pipe para OR (no comma,
+        que es AND), que `with_people` **no existe en `/discover/tv`**
+        (silenciosamente ignorado, confirmado con `total_results` idéntico
+        con/sin el parámetro — el sesgo por director/actor solo puede
+        aplicarse al pool de películas), que los tres filtros (género +
+        persona + década) se combinan en una sola request con AND entre
+        parámetros, y que el rate limit viejo de TMDb (~40 req/10s) se
+        desactivó en 2019 (hoy ~40 req/s). Doc completo:
+        `docs/(C) research-tmdb-discover-personalization.md`. Sin cambios de
+        código.
+      - **#2 persistir perfil de gusto** | archivos:
+        `backend/app/db.py` (tabla `taste_profiles`, upsert vía
+        `save_taste_profile`/`get_taste_profile`), `backend/app/main.py`
+        (`_finish_recommend` persiste el perfil tras guardar los ratings
+        importados; `taste_profile_endpoint` lee el persistido primero, cae
+        al recompute on-demand solo si no hay nada guardado — usuarios
+        pre-feature o antes del primer import), `backend/tests/test_main.py`
+        (2 tests nuevos). Evita recomputar ~200 requests a TMDb en cada carga
+        de `/profile/taste`. 128→130 tests. Reviewed y verificado en verde
+        por Claude antes de mergear.
+      - **#6 cachear Gemini refine** | archivos: `backend/app/llm_client.py`
+        (`_REFINE_CACHE`, mismo patrón OrderedDict TTL+LRU que
+        `_DISCOVER_CACHE` de `tmdb_client.py`; TTL 15 min, key = mood +
+        tupla de `tmdb_id`s de los candidatos del heurístico; cachea el dict
+        crudo de Gemini, revalida contra los candidatos de cada call — un
+        cache hit no se salta la validación "solo títulos de la lista"),
+        `backend/tests/test_llm_client.py` (4 tests nuevos). 128→132 tests.
+        Reviewed y verificado en verde por Claude antes de mergear.
+      Tests combinados en `main` tras mergear ambas: 134 en verde
+      (128 base + 2 + 4). Owner: claude (3 subagentes, worktrees separados,
+      despachados en paralelo desde una sesión orquestadora que revisó cada
+      diff antes de mergear — Codex no participó en esta ronda, corrección
+      del usuario pendiente de aplicar en la próxima).
+
 - [x] [rec-quality-001] 3 bugs de calidad de recomendación reportados en uso
       real (probando el import por username recién agregado): el "why" era
       siempre casi el mismo texto ("humor y tono liviano"), no estaba claro

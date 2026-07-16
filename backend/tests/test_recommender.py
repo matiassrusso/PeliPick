@@ -253,3 +253,89 @@ def test_recommend_ignores_user_tags_outside_internal_vocabulary() -> None:
     )
 
     assert response.recommendations[0].match_score == 50
+
+
+def test_recommend_scores_and_names_director_match_from_profile() -> None:
+    catalog = [
+        {
+            "title": "By Fave Director",
+            "year": 2020,
+            "kind": "movie",
+            "tags": [],
+            "director": "Fave Director",
+            "actors": [],
+        },
+        {"title": "Unrelated", "year": 2020, "kind": "movie", "tags": []},
+    ]
+    profile = {"top_directors": [{"name": "Fave Director", "count": 3}], "top_actors": [], "decade_breakdown": []}
+
+    response = recommend(ratings=[], mood="", catalog=catalog, profile=profile)
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["By Fave Director"].match_score > by_title["Unrelated"].match_score
+    assert "Fave Director" in by_title["By Fave Director"].why
+
+
+def test_recommend_scores_and_names_actor_match_from_profile() -> None:
+    catalog = [
+        {"title": "With Fave Actor", "year": 2020, "kind": "movie", "tags": [], "actors": ["Fave Actor"]},
+        {"title": "Unrelated", "year": 2020, "kind": "movie", "tags": []},
+    ]
+    profile = {"top_directors": [], "top_actors": [{"name": "Fave Actor", "count": 2}], "decade_breakdown": []}
+
+    response = recommend(ratings=[], mood="", catalog=catalog, profile=profile)
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["With Fave Actor"].match_score > by_title["Unrelated"].match_score
+    assert "Fave Actor" in by_title["With Fave Actor"].why
+
+
+def test_recommend_scores_and_names_decade_match_from_profile() -> None:
+    catalog = [
+        {"title": "Right Decade", "year": 2015, "kind": "movie", "tags": []},
+        {"title": "Wrong Decade", "year": 1985, "kind": "movie", "tags": []},
+    ]
+    profile = {"top_directors": [], "top_actors": [], "decade_breakdown": [{"decade": 2010, "count": 5}]}
+
+    response = recommend(ratings=[], mood="", catalog=catalog, profile=profile)
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["Right Decade"].match_score > by_title["Wrong Decade"].match_score
+    assert "2010s" in by_title["Right Decade"].why
+
+
+def test_recommend_without_profile_ignores_director_actor_decade_fields() -> None:
+    catalog = [
+        {"title": "Some Movie", "year": 2020, "kind": "movie", "tags": [], "director": "Anyone", "actors": ["X"]}
+    ]
+
+    response = recommend(ratings=[], mood="", catalog=catalog)
+
+    assert response.recommendations[0].match_score == 50
+
+
+def test_recommend_reserves_one_exploration_slot_even_when_outscored_by_profile_picks() -> None:
+    catalog = [
+        {"title": f"Profile {i}", "year": 2020, "kind": "movie", "tags": ["action"], "_source": "profile"}
+        for i in range(5)
+    ] + [{"title": "Exploration Pick", "year": 2020, "kind": "movie", "tags": [], "_source": "exploration"}]
+    ratings = [RatedItem(title="Old", rating=5, review="action packed")]
+
+    response = recommend(ratings=ratings, mood="", catalog=catalog)
+
+    titles = {item.title for item in response.recommendations}
+    assert "Exploration Pick" in titles
+    assert len(response.recommendations) == 5
+
+
+def test_recommend_untagged_catalog_items_default_to_profile_source() -> None:
+    # items without an explicit "_source" (mock catalog, plain fetch_candidates)
+    # must not accidentally get treated as reserved "exploration" slots
+    catalog = [
+        {"title": f"Movie {i}", "year": 2020, "kind": "movie", "tags": ["action"]} for i in range(5)
+    ]
+    ratings = [RatedItem(title="Old", rating=5, review="action packed")]
+
+    response = recommend(ratings=ratings, mood="", catalog=catalog)
+
+    assert len(response.recommendations) == 5

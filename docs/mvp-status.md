@@ -92,13 +92,37 @@
   el discover de TMDb pedía `sort_by=popularity.desc` (qué está sonando
   ahora, no qué es bueno), lo que sesgaba todo el catálogo de candidatos a
   estrenos recientes — cambiado a `vote_average.desc`
-- tests de backend (128, incluyendo auth, feedback, historial, TMDb, Gemini, el
+- perfil de gusto persistido por usuario (`taste_profiles` en SQLite): antes
+  `build_taste_profile` se recomputaba entero (hasta ~200 requests a TMDb)
+  cada vez que se abría `/profile/taste`; ahora se calcula y guarda una sola
+  vez por import (`/recommend/zip` o `/recommend/letterboxd`), antes de traer
+  candidatos, para que la propia recomendación de ese request ya lo use
+- el motor de recomendación arma el pool de candidatos desde el gusto real
+  del usuario, no desde el top global de TMDb: `fetch_personalized_candidates`
+  sesga `/discover/movie` y `/discover/tv` por los géneros top del perfil
+  (OR), los directores/actores top resueltos a `person_id` vía
+  `/search/person` (solo aplica a películas — TMDb ignora `with_people` en
+  `/discover/tv`, confirmado en vivo) y la década más pesada (sesgo suave,
+  ±1 década), todo en una sola query por tipo. Se mezcla con una porción sin
+  personalizar ("apuesta distinta") de la que el ranking siempre reserva un
+  lugar, para no cerrar el pool sobre el mismo gusto. El scoring ahora suma
+  puntos por director/actor/década concretos (no solo tags de género/tono) y
+  el "why" nombra a la persona o década cuando fue el motivo real del match.
+  Dos usuarios con gustos distintos ya reciben pools genuinamente distintos,
+  en vez del mismo top de TMDb reordenado
+- caché en memoria de las respuestas de Gemini refine (TTL 15 min, mismo
+  patrón que la caché de TMDb), keyeada por mood + los candidatos exactos
+  que le pasó el heurístico — evita repetir la llamada (y gastar cupo
+  gratuito) cuando se regeneran picks con la misma entrada
+- tests de backend (148, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd (incluyendo
   Tags de usuario), el scraper del diario por username, el enriquecimiento de
   tags por TMDb para títulos amados, rate limiting/reset de contraseña, la
   caché de TMDb, los 3 modos de recomendación + kind_filter, el historial de
   vistas con fecha real, la personalización del "why" (heurístico y del
-  agente Gemini), y el perfil de gusto visual)
+  agente Gemini), el perfil de gusto visual, y el motor personalizado
+  (candidatos por perfil, resolución de persona en TMDb, scoring por
+  director/actor/década, mezcla con exploración))
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /
