@@ -15,7 +15,7 @@ If a session is drifting without moving hacia calidad de recomendación o clarid
 1. Definición corta del alcance (ver `docs/product-mvp.md`)
 2. Implementación en `backend` (FastAPI + SQLite) y/o `frontend` (React + Vite + Tailwind)
 3. Si hay varios agentes en paralelo: coordinación por `TASKS.md` (worktrees separados, marcar In Progress → Done, nunca mergear a `main` solo)
-4. Tests de backend en verde antes de cerrar (97 tests a la fecha)
+4. Tests de backend en verde antes de cerrar (121 tests a la fecha)
 5. Todavía sin deploy — se corre y valida local
 
 ## Key People
@@ -26,7 +26,7 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 
 - `backend/` — FastAPI + SQLite: auth, catálogo TMDb, agente Gemini, import de Letterboxd
 - `frontend/` — React + Vite + Tailwind, tema "cinematic"
-- `docs/` — `product-mvp.md`, `design-directions.md`, `architecture.md`, `mvp-status.md`, `api.md`, `tmdb-setup.md`, `gemini-setup.md`, `letterboxd-zip-format.md`, `build-log.md`
+- `docs/` — `product-mvp.md`, `design-directions.md`, `architecture.md`, `mvp-status.md`, `api.md`, `tmdb-setup.md`, `gemini-setup.md`, `letterboxd-zip-format.md`, `letterboxd-username-import.md`, `build-log.md`
 - `00 System/` — scripts/config reusables de este proyecto (vacío por ahora)
 - `01 Skills/` — skills en markdown de este proyecto (vacío por ahora)
 - `02 Attachments/` — imágenes/screenshots (vacío por ahora)
@@ -43,7 +43,7 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 
 ## Current Status
 
-> **Last updated:** 2026-07-14
-> **Status:** Activo, MVP funcional local. 105 tests de backend (sin commitear todavía: Tags de usuario del zip + fecha real de "visto" persistida, y prompt de Gemini enriquecido con perfil de gusto explícito — hecho en paralelo por Codex y Claude). Último commit real: 2026-07-14 ("feat: add visual taste profile..."), pusheado a `origin/main`.
+> **Last updated:** 2026-07-15
+> **Status:** Activo, MVP funcional local. 121 tests de backend (sin commitear todavía: import por username de Letterboxd vía scraping del diario público, con `curl_cffi` como dependencia nueva porque Cloudflare bloquea el stdlib `urllib`/`requests` por fingerprint TLS). Último commit real: 2026-07-15 ("feat: ground Gemini's picks in an explicit taste digest"), pusheado a `origin/main`.
 
-Detalle completo en `docs/mvp-status.md`. Pendiente: import por username de Letterboxd (scraping), reportar filas descartadas del CSV base, envío real de mail para recuperación de contraseña, observabilidad mínima.
+Detalle completo en `docs/mvp-status.md`. Pendiente: reportar filas descartadas del CSV base, envío real de mail para recuperación de contraseña, observabilidad mínima.

@@ -41,6 +41,30 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [lb-username-001] Import por username de Letterboxd (scraping),
+      alternativa a subir el zip: nuevo endpoint `POST /recommend/letterboxd`
+      que scrapea el diario público (`/diary/films/page/N/`, hasta 20
+      páginas) — rating, fecha real de visto, y rewatch (título repetido en
+      el diario suma +0.5, tope 5.0). No cubre likes/favoritos/tags/ratings
+      sin diario: las grillas `/films/` y `/films/ratings/` de Letterboxd
+      hidratan el rating client-side vía React y no se pueden leer sin JS,
+      así que el diario es la única vista pública server-rendered
+      disponible. Hallazgo no anticipado: Letterboxd está detrás de
+      Cloudflare bloqueando por fingerprint TLS (JA3) del handshake, no por
+      headers — el stdlib `urllib`/`requests` de Python devuelve 403 pase lo
+      que pase con el `User-Agent`; se agregó `curl_cffi` (imita el
+      fingerprint TLS de Chrome vía libcurl) como única forma real de
+      pasarlo. Confirmado end-to-end con datos reales del diario público de
+      `scorsese` (254 ratings, 5 picks generados) | owner: claude |
+      archivos: `backend/app/letterboxd_scrape.py` (nuevo),
+      `backend/app/main.py` (`_validate_recommend_params`/
+      `_finish_recommend` extraídos para compartir el flujo con
+      `/recommend/zip`), `backend/requirements.txt` (`curl_cffi`),
+      `frontend/src/pages/Recommend.tsx` (toggle zip/username), tests
+      nuevos en `test_letterboxd_scrape.py` y `test_main.py`,
+      `docs/letterboxd-username-import.md` (nuevo), `docs/api.md`,
+      `docs/mvp-status.md`. 121 tests de backend en verde (105→121), build
+      de frontend limpio.
 - [x] [llm-001] Prompt de Gemini enriquecido: en vez de mandarle solo la
       lista cruda de reseñas, se le arma un "perfil de gusto" explícito
       (promedio, tags recurrentes en lo que más valoró, títulos que amó/odió)

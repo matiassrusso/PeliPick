@@ -470,7 +470,9 @@ export default function Recommend() {
   const [mode, setMode] = useState<RecommendMode>("profile");
   const [kindFilter, setKindFilter] = useState<KindFilter>("both");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [importMethod, setImportMethod] = useState<"zip" | "username">("zip");
   const [zipFile, setZipFile] = useState<File | null>(null);
+  const [letterboxdUsername, setLetterboxdUsername] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -510,10 +512,11 @@ export default function Recommend() {
     setSelectedGenres((prev) => (prev.includes(key) ? prev.filter((g) => g !== key) : [...prev, key]));
   }
 
-  const canGenerate = Boolean(zipFile) && (mode !== "genres" || selectedGenres.length > 0);
+  const hasSource = importMethod === "zip" ? Boolean(zipFile) : letterboxdUsername.trim().length > 0;
+  const canGenerate = hasSource && (mode !== "genres" || selectedGenres.length > 0);
 
   async function handleGenerate() {
-    if (!token || !zipFile || !canGenerate) return;
+    if (!token || !canGenerate) return;
     setLoading(true);
     setError("");
 
@@ -522,9 +525,17 @@ export default function Recommend() {
       formData.append("mode", mode);
       formData.append("kind_filter", kindFilter);
       formData.append("genres", mode === "genres" ? selectedGenres.join(",") : "");
-      formData.append("file", zipFile);
 
-      const response = await fetch(`${API_BASE_URL}/recommend/zip`, {
+      let endpoint = `${API_BASE_URL}/recommend/zip`;
+      if (importMethod === "zip") {
+        if (!zipFile) return;
+        formData.append("file", zipFile);
+      } else {
+        endpoint = `${API_BASE_URL}/recommend/letterboxd`;
+        formData.append("username", letterboxdUsername.trim());
+      }
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -539,7 +550,7 @@ export default function Recommend() {
 
       const data = (await response.json()) as RecommendResponse;
       if (!data.recommendations.length) {
-        throw new Error("No pude leer ratings válidos de ese zip.");
+        throw new Error("No pude leer ratings válidos de esa fuente.");
       }
 
       setResult(data);
@@ -600,54 +611,113 @@ export default function Recommend() {
 
           {!result && !loading && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="max-w-2xl">
-              <div className="p-5 rounded-xl border border-border bg-card/30 mb-6">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                    <ExternalLink className="w-4 h-4 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Cómo exportar de Letterboxd</h3>
-                    <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                      <li>Letterboxd → Settings → pestaña Data</li>
-                      <li>"Export your data" — descarga un .zip</li>
-                      <li>Subí ese .zip tal cual, sin descomprimir, acá abajo</li>
-                    </ol>
-                  </div>
-                </div>
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setImportMethod("zip")}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm border transition-all duration-200 ${
+                    importMethod === "zip"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
+                  }`}
+                >
+                  <UploadIcon className="w-4 h-4" />
+                  Subir mi .zip
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMethod("username")}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm border transition-all duration-200 ${
+                    importMethod === "username"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  Mi username de Letterboxd
+                </button>
               </div>
 
-              <div
-                onDrop={handleDrop}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onClick={() => fileInputRef.current?.click()}
-                className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 mb-6 ${
-                  isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-card/30"
-                }`}
-              >
-                <input ref={fileInputRef} type="file" accept=".zip,application/zip" onChange={handleFileInput} className="hidden" />
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                  <UploadIcon className="w-6 h-6 text-primary" />
+              {importMethod === "zip" ? (
+                <>
+                  <div className="p-5 rounded-xl border border-border bg-card/30 mb-6">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <ExternalLink className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium mb-2">Cómo exportar de Letterboxd</h3>
+                        <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                          <li>Letterboxd → Settings → pestaña Data</li>
+                          <li>"Export your data" — descarga un .zip</li>
+                          <li>Subí ese .zip tal cual, sin descomprimir, acá abajo</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 mb-6 ${
+                      isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-card/30"
+                    }`}
+                  >
+                    <input ref={fileInputRef} type="file" accept=".zip,application/zip" onChange={handleFileInput} className="hidden" />
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
+                      <UploadIcon className="w-6 h-6 text-primary" />
+                    </div>
+                    <h3 className="text-lg font-serif mb-1" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                      {isDragging ? "Soltalo acá" : "Arrastrá tu .zip acá"}
+                    </h3>
+                    <p className="text-muted-foreground text-sm mb-3">o hacé click para buscarlo</p>
+                    {zipFile ? (
+                      <div className="inline-flex items-center gap-2 text-xs text-primary bg-primary/10 px-3 py-1.5 rounded-full">
+                        <CheckCircle className="w-3 h-3" />
+                        {zipFile.name} · {formatFileSize(zipFile.size)}
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-3 py-1.5 rounded-full">
+                        <FileText className="w-3 h-3" />
+                        Solo .zip
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mb-6">
+                  <div className="p-5 rounded-xl border border-border bg-card/30 mb-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <User className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-medium mb-2">Importar por username</h3>
+                        <p className="text-sm text-muted-foreground leading-snug">
+                          Leemos tu diario público de Letterboxd (ratings, fechas y rewatches). Solo
+                          cubre lo que quede registrado ahí — no likes ni favoritos. Tu perfil tiene
+                          que ser público.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <label className="block">
+                    <span className="text-sm font-medium mb-2 block">Tu username de Letterboxd</span>
+                    <input
+                      type="text"
+                      value={letterboxdUsername}
+                      onChange={(e) => setLetterboxdUsername(e.target.value)}
+                      placeholder="ej: scorsese"
+                      className="w-full px-4 py-3 rounded-xl border border-border bg-card/50 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+                    />
+                  </label>
                 </div>
-                <h3 className="text-lg font-serif mb-1" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                  {isDragging ? "Soltalo acá" : "Arrastrá tu .zip acá"}
-                </h3>
-                <p className="text-muted-foreground text-sm mb-3">o hacé click para buscarlo</p>
-                {zipFile ? (
-                  <div className="inline-flex items-center gap-2 text-xs text-primary bg-primary/10 px-3 py-1.5 rounded-full">
-                    <CheckCircle className="w-3 h-3" />
-                    {zipFile.name} · {formatFileSize(zipFile.size)}
-                  </div>
-                ) : (
-                  <div className="inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-3 py-1.5 rounded-full">
-                    <FileText className="w-3 h-3" />
-                    Solo .zip
-                  </div>
-                )}
-              </div>
+              )}
 
               <div className="p-6 rounded-2xl border border-border bg-card/50">
                 <span className="text-sm font-medium mb-3 block">Qué querés ver hoy</span>

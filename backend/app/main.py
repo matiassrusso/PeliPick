@@ -4,13 +4,14 @@ import sqlite3
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, catalog, db, letterboxd_zip, llm_client, taste_profile, tmdb_client
+from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, taste_profile, tmdb_client
 from .models import (
     AuthResponse,
     FeedbackRequest,
     MovieDetails,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    RatedItem,
     RecommendationHistoryResponse,
     PasswordResetStartResponse,
     RecommendRequest,
@@ -156,36 +157,29 @@ def taste_profile_endpoint(
     return TasteProfileResponse(**taste_profile.build_taste_profile(watched))
 
 
-@app.post("/recommend/zip", response_model=RecommendResponse)
-async def recommend_titles_from_zip(
-    mood: str = Form(""),
-    mode: str = Form("profile"),
-    kind_filter: str = Form("both"),
-    genres: str = Form(""),
-    file: UploadFile = File(...),
-    user: sqlite3.Row = Depends(auth.get_current_user),
-) -> RecommendResponse:
+def _validate_recommend_params(mode: str, kind_filter: str) -> None:
     if mode not in VALID_MODES:
         raise HTTPException(status_code=400, detail="Modo de recomendación inválido.")
     if kind_filter not in VALID_KIND_FILTERS:
         raise HTTPException(status_code=400, detail="Filtro de tipo inválido.")
 
-    if not (file.filename or "").lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Subí el .zip que exporta Letterboxd.")
 
-    data = await file.read()
-    if len(data) > MAX_ZIP_SIZE:
-        raise HTTPException(status_code=400, detail="Ese zip es demasiado grande.")
-
-    try:
-        ratings, extra_seen = letterboxd_zip.parse_letterboxd_zip(data)
-    except letterboxd_zip.ZipParseError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+def _finish_recommend(
+    ratings: list[RatedItem],
+    extra_seen: set[str],
+    mood: str,
+    mode: str,
+    kind_filter: str,
+    genres: str,
+    user: sqlite3.Row,
+) -> RecommendResponse:
+    """Shared tail of both /recommend/zip and /recommend/letterboxd: once a
+    source has produced (ratings, extra_seen), the rest of the flow —
+    candidates, exclusion, scoring, LLM refine, persistence — is identical."""
     if not ratings:
         raise HTTPException(
             status_code=400,
-            detail="No encontré ratings ni reviews usables en ese zip.",
+            detail="No encontré ratings ni reviews usables para armar recomendaciones.",
         )
 
     candidates = catalog.CATALOG
@@ -196,7 +190,7 @@ async def recommend_titles_from_zip(
             candidates = catalog.CATALOG
 
     # exclude titles already recommended to this user before, so hitting
-    # "nuevos picks" and regenerating with the same zip+mood surfaces
+    # "nuevos picks" and regenerating with the same source+mood surfaces
     # different movies instead of the same deterministic top 5
     already_recommended = db.get_recently_recommended_titles(user["id"])
     also_seen = frozenset(extra_seen) | frozenset(already_recommended)
@@ -250,6 +244,51 @@ async def recommend_titles_from_zip(
         item.id = new_id
 
     return response
+
+
+@app.post("/recommend/zip", response_model=RecommendResponse)
+async def recommend_titles_from_zip(
+    mood: str = Form(""),
+    mode: str = Form("profile"),
+    kind_filter: str = Form("both"),
+    genres: str = Form(""),
+    file: UploadFile = File(...),
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> RecommendResponse:
+    _validate_recommend_params(mode, kind_filter)
+
+    if not (file.filename or "").lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Subí el .zip que exporta Letterboxd.")
+
+    data = await file.read()
+    if len(data) > MAX_ZIP_SIZE:
+        raise HTTPException(status_code=400, detail="Ese zip es demasiado grande.")
+
+    try:
+        ratings, extra_seen = letterboxd_zip.parse_letterboxd_zip(data)
+    except letterboxd_zip.ZipParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _finish_recommend(ratings, extra_seen, mood, mode, kind_filter, genres, user)
+
+
+@app.post("/recommend/letterboxd", response_model=RecommendResponse)
+def recommend_titles_from_letterboxd(
+    username: str = Form(...),
+    mood: str = Form(""),
+    mode: str = Form("profile"),
+    kind_filter: str = Form("both"),
+    genres: str = Form(""),
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> RecommendResponse:
+    _validate_recommend_params(mode, kind_filter)
+
+    try:
+        ratings, extra_seen = letterboxd_scrape.fetch_letterboxd_diary(username)
+    except letterboxd_scrape.ScrapeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _finish_recommend(ratings, extra_seen, mood, mode, kind_filter, genres, user)
 
 
 @app.get("/movies/{tmdb_id}/details", response_model=MovieDetails)

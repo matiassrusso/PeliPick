@@ -3,8 +3,10 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
+from backend.app import letterboxd_scrape
 from backend.app.llm_client import LlmError
 from backend.app.main import app
+from backend.app.models import RatedItem
 from backend.app.tmdb_client import TmdbError
 
 client = TestClient(app)
@@ -92,6 +94,55 @@ def test_recommend_zip_returns_picks_with_ids_for_valid_zip() -> None:
     recommendations = response.json()["recommendations"]
     assert recommendations
     assert all(item["id"] is not None for item in recommendations)
+
+
+def test_recommend_letterboxd_returns_picks_for_valid_username(monkeypatch) -> None:
+    monkeypatch.setattr(
+        letterboxd_scrape,
+        "fetch_letterboxd_diary",
+        lambda username: (
+            [RatedItem(title="Mad Max: Fury Road", rating=1.5, review="", watched_date="2024-01-01")],
+            set(),
+        ),
+    )
+    headers = _auth_headers("lbusername")
+
+    response = client.post(
+        "/recommend/letterboxd",
+        headers=headers,
+        data={"username": "someuser", "mood": ""},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommendations"]
+
+
+def test_recommend_letterboxd_surfaces_scrape_errors_as_400(monkeypatch) -> None:
+    def raise_scrape_error(username: str):
+        raise letterboxd_scrape.ScrapeError(f"No encontré un usuario de Letterboxd llamado «{username}».")
+
+    monkeypatch.setattr(letterboxd_scrape, "fetch_letterboxd_diary", raise_scrape_error)
+    headers = _auth_headers("lbmissing")
+
+    response = client.post(
+        "/recommend/letterboxd",
+        headers=headers,
+        data={"username": "nosuchuser", "mood": ""},
+    )
+
+    assert response.status_code == 400
+
+
+def test_recommend_letterboxd_rejects_invalid_mode(monkeypatch) -> None:
+    headers = _auth_headers("lbbadmode")
+
+    response = client.post(
+        "/recommend/letterboxd",
+        headers=headers,
+        data={"username": "someuser", "mode": "not-a-mode"},
+    )
+
+    assert response.status_code == 400
 
 
 def test_feedback_accepts_own_recommendation() -> None:

@@ -68,12 +68,22 @@
   tags recurrentes en lo valorado, títulos que amó/odió) para que las
   razones de cada pick nombren un patrón concreto del historial en vez de
   un elogio genérico — sigue sin rescorear ni traer candidatos propios
-- tests de backend (105, incluyendo auth, feedback, historial, TMDb, Gemini, el
+- import por username de Letterboxd (`POST /recommend/letterboxd`),
+  alternativa al zip: scrapea el diario público (rating, fecha real de
+  visto, rewatch), sin exportar nada — ver
+  `docs/letterboxd-username-import.md`. No cubre likes/favoritos/tags ni
+  ratings sin entrada de diario (esas grillas de Letterboxd hidratan client-
+  side y no se pueden leer sin ejecutar JS), así que el zip sigue siendo la
+  opción más completa. Requirió sumar `curl_cffi` como dependencia: el
+  stack `urllib`/`requests` de Python queda bloqueado con `403` por
+  Cloudflare según el fingerprint TLS del handshake, sin importar los
+  headers que se manden
+- tests de backend (121, incluyendo auth, feedback, historial, TMDb, Gemini, el
   desempate por score crudo, el parser del zip de Letterboxd (incluyendo
-  Tags de usuario), rate limiting/reset de contraseña, la caché de TMDb, los
-  3 modos de recomendación + kind_filter, el historial de vistas con fecha
-  real, la personalización del "why" (heurístico y del agente Gemini), y el
-  perfil de gusto visual)
+  Tags de usuario), el scraper del diario por username, rate limiting/reset
+  de contraseña, la caché de TMDb, los 3 modos de recomendación +
+  kind_filter, el historial de vistas con fecha real, la personalización
+  del "why" (heurístico y del agente Gemini), y el perfil de gusto visual)
 - pasada de UX/UI: tema "cinematic" (paleta ámbar/dorada, `Instrument Serif` +
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /
@@ -106,8 +116,6 @@
 
 ## Falta para un MVP más serio
 
-- import de historial por username de Letterboxd (scraping), como alternativa
-  al zip manual — evaluado, pendiente por ser la parte más frágil técnicamente
 - reportar filas descartadas del CSV base
 - observabilidad mínima
 - envío real de mail para recuperación de contraseña (hoy el token nunca

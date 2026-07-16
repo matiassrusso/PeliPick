@@ -205,6 +205,31 @@ interno viene mal formado.
 Cada rating importado y cada recomendación servida quedan persistidos en
 SQLite, asociados al usuario autenticado.
 
+## `POST /recommend/letterboxd`
+
+Alternativa a `/recommend/zip` que no requiere exportar nada: scrapea el
+diario público de un username de Letterboxd en vez de leer un zip. Ver
+[letterboxd-username-import.md](letterboxd-username-import.md) para el
+detalle de qué se puede leer así y qué no.
+
+### Body (form fields)
+
+```
+username: scorsese            (obligatorio)
+mood: psychological           (opcional, legacy)
+mode: profile | recent | genres   (default: profile)
+kind_filter: movie | series | both   (default: both)
+genres: "action,romance"      (obligatorio si mode=genres)
+```
+
+Mismo `mode`/`kind_filter`/`genres`/response shape que `/recommend/zip` (ver
+arriba) — comparten toda la lógica de recomendación, solo cambia de dónde
+sale `(ratings, extra_seen)`.
+
+`400` si el username está vacío, si no existe un usuario de Letterboxd con
+ese nombre, si su diario no tiene entradas públicas, o si Letterboxd no
+responde.
+
 ## `GET /history`
 
 Requiere auth. Devuelve las sesiones de recomendación ya generadas por el
