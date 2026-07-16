@@ -79,6 +79,12 @@ CREATE TABLE IF NOT EXISTS feedback (
     status TEXT NOT NULL CHECK (status IN ('interested', 'not_interested', 'seen')),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS taste_profiles (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id),
+    profile_json TEXT NOT NULL,
+    computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -382,3 +388,25 @@ def save_feedback(user_id: int, recommendation_id: int, status: str) -> None:
             "INSERT INTO feedback (user_id, recommendation_id, status) VALUES (?, ?, ?)",
             (user_id, recommendation_id, status),
         )
+
+
+def save_taste_profile(user_id: int, profile: dict) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO taste_profiles (user_id, profile_json, computed_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(user_id) DO UPDATE SET
+                profile_json = excluded.profile_json,
+                computed_at = excluded.computed_at
+            """,
+            (user_id, json.dumps(profile)),
+        )
+
+
+def get_taste_profile(user_id: int) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT profile_json FROM taste_profiles WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return json.loads(row["profile_json"]) if row is not None else None

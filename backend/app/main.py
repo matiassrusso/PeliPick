@@ -162,8 +162,19 @@ def taste_profile_endpoint(
     if not tmdb_client.is_configured():
         raise HTTPException(status_code=503, detail="Catálogo de TMDb no configurado.")
 
+    # ponytail: reuse the profile persisted by the last /recommend/zip or
+    # /recommend/letterboxd call (see _finish_recommend) instead of redoing
+    # ~200 TMDb requests on every page load. Only recompute here if none
+    # exists yet — pre-feature users, or someone hitting this before their
+    # first import — and persist that recompute so future calls hit cache.
+    persisted = db.get_taste_profile(user["id"])
+    if persisted is not None:
+        return TasteProfileResponse(**persisted)
+
     watched = db.get_watched_items(user["id"])
-    return TasteProfileResponse(**taste_profile.build_taste_profile(watched))
+    profile = taste_profile.build_taste_profile(watched)
+    db.save_taste_profile(user["id"], profile)
+    return TasteProfileResponse(**profile)
 
 
 def _validate_recommend_params(mode: str, kind_filter: str) -> None:
@@ -263,6 +274,19 @@ def _finish_recommend(
         user["id"],
         [(item.title, item.rating, item.review, item.watched_date) for item in ratings],
     )
+    # persist the taste profile once per import instead of leaving it to be
+    # recomputed (~200 TMDb requests) on every /profile/taste load or future
+    # personalized-candidate lookup — recompute here since watched history
+    # just changed; skip if TMDb isn't configured (nothing to match against).
+    # Guarded broadly: this is a caching side effect, not the point of the
+    # request — a TMDb hiccup here shouldn't fail a recommend call that
+    # already succeeded.
+    if tmdb_client.is_configured():
+        try:
+            watched = db.get_watched_items(user["id"])
+            db.save_taste_profile(user["id"], taste_profile.build_taste_profile(watched))
+        except Exception:
+            logger.warning("Taste profile persistence failed, will retry on next import", exc_info=True)
     session_id = db.create_recommendation_session(user["id"], mood, response.taste_summary)
     inserted_ids = db.save_recommendations(
         session_id,

@@ -3,7 +3,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from backend.app import letterboxd_scrape
+from backend.app import db, letterboxd_scrape
 from backend.app.llm_client import LlmError
 from backend.app.main import TASTE_TAG_LOOKUP_CAP, _enrich_loved_ratings_with_genre_tags, app
 from backend.app.models import RatedItem
@@ -645,3 +645,70 @@ def test_taste_profile_returns_genre_and_decade_breakdown(monkeypatch) -> None:
     assert body["decade_breakdown"] == [{"decade": 2010, "count": 1}]
     assert body["top_directors"] == [{"name": "George Miller", "count": 1}]
     assert body["top_actors"] == [{"name": "Tom Hardy", "count": 1}]
+
+    # the fallback recompute inside the endpoint should persist too, so a
+    # second load hits the cache instead of recomputing again
+    stored = db.get_taste_profile(db.get_user_by_username("profileuser")["id"])
+    assert stored is not None
+    assert stored["genre_breakdown"] == [{"genre": "Acción", "weight": 5.0}]
+
+
+def test_recommend_zip_persists_taste_profile_for_reuse(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.taste_profile.tmdb_client.search_title",
+        lambda title: {
+            "tmdb_id": 76341,
+            "title": title,
+            "year": 2015,
+            "kind": "movie",
+            "genres": ["Acción"],
+            "tags": [],
+        },
+    )
+    monkeypatch.setattr(
+        "backend.app.taste_profile.tmdb_client.fetch_taste_credits",
+        lambda tmdb_id, kind: {"director": "George Miller", "actors": ["Tom Hardy"]},
+    )
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.fetch_candidates",
+        lambda mood: [{"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]}],
+    )
+
+    headers = _auth_headers("persistprofile")
+    response = _post_zip(headers, ratings_csv="Name,Rating,Review\nMad Max: Fury Road,5,loved it")
+
+    assert response.status_code == 200
+    stored = db.get_taste_profile(db.get_user_by_username("persistprofile")["id"])
+    assert stored is not None
+    assert stored["genre_breakdown"] == [{"genre": "Acción", "weight": 5.0}]
+
+
+def test_taste_profile_endpoint_reuses_persisted_profile_without_recomputing(monkeypatch) -> None:
+    headers = _auth_headers("cachedprofile")
+    user_id = db.get_user_by_username("cachedprofile")["id"]
+    db.save_taste_profile(
+        user_id,
+        {
+            "matched_count": 3,
+            "total_count": 3,
+            "genre_breakdown": [{"genre": "Drama", "weight": 12.0}],
+            "decade_breakdown": [{"decade": 2000, "count": 3}],
+            "top_directors": [{"name": "Someone", "count": 2}],
+            "top_actors": [{"name": "Someone Else", "count": 2}],
+        },
+    )
+
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def _boom(title: str) -> dict:
+        raise AssertionError("should not recompute when a profile is already persisted")
+
+    monkeypatch.setattr("backend.app.taste_profile.tmdb_client.search_title", _boom)
+
+    response = client.get("/profile/taste", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["genre_breakdown"] == [{"genre": "Drama", "weight": 12.0}]
+    assert body["matched_count"] == 3
