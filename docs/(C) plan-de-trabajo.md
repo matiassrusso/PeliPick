@@ -87,10 +87,10 @@ Implicancia: el foco es el **motor** (Fase 1), pero como portfolio también pesa
 
 ## 6. Fase 2 — Deploy (porque también es portfolio)
 
-Backend → **Railway**, frontend → **Vercel** (stack estándar de Matías). **Después de Fase 1**, para que lo mostrable ya sea bueno.
+Backend → **Render**, frontend → **Vercel** (stack estándar de Matías). **Después de Fase 1**, para que lo mostrable ya sea bueno.
 
-**Decisión técnica a cerrar acá (§9):** Railway tiene **filesystem efímero** → el SQLite se borra en cada deploy. Opciones:
-- **Volumen persistente de Railway** — cambio mínimo, mantiene SQLite.
+**Decisión técnica a cerrar acá (§9):** el plan free/starter de Render también tiene **filesystem efímero** → el SQLite se borra en cada deploy. Opciones:
+- **Disco persistente de Render** (plan pago) — cambio mínimo, mantiene SQLite.
 - **Migrar a Postgres** — más "pro" para portfolio, más laburo (hoy es `sqlite3` stdlib sin ORM; habría que abstraer `db.py`).
 
 Otros pendientes de deploy: env vars (`TMDB_API_KEY`, `GEMINI_API_KEY`, `PELIPICK_DEBUG`), CORS (hoy `allow_origins=["*"]`, endurecer al dominio de Vercel), y el envío real de mail para reset de password (hoy el token no llega al usuario sin `PELIPICK_DEBUG=1`).
@@ -128,7 +128,7 @@ Inventario completo en `06 Agent Skills/README.md` del vault. Mapeo por fase:
 | **Partir el plan en tasks** | `to-issues` + board `TaskCreate` + plugin `codex` | Vertical slices independientes despachadas en paralelo a Codex/subagentes en worktrees separados (ver `AGENTS.md` y `TASKS.md`) |
 | **Cerrar cada fase** | `code-review` | Revisar Standards + Spec en paralelo antes de mergear |
 | **Cuando algo rompe/está lento** | `diagnosing-bugs` | Loop de diagnóstico para bugs difíciles o rate-limits inesperados |
-| **Deploy** (Fase 2) | `research` (Railway efímero/Postgres) + `gh` CLI + `webapp-testing` | Confirmar opciones de persistencia, tocar repo/CI, smoke test del deploy |
+| **Deploy** (Fase 2) | `research` (Render efímero/Postgres) + `gh` CLI + `webapp-testing` | Confirmar opciones de persistencia, tocar repo/CI, smoke test del deploy |
 | **Identidad visual** (Fase 3) | `impeccable`, `emil-design-eng`, `web-design-guidelines`; animaciones: `vercel-react-view-transitions`, `review-animations` | Rediseño, polish, auditoría de UX/accesibilidad |
 | **Verificar frontend en vivo** | `webapp-testing` (Playwright) o las preview tools del harness | Screenshots, logs de consola, testear interacciones |
 | **Scraping/research web** (import username si Letterboxd cambia) | Nimble MCP / `defuddle` | Extraer markdown limpio de páginas, research web |
@@ -141,7 +141,7 @@ Inventario completo en `06 Agent Skills/README.md` del vault. Mapeo por fase:
 
 1. **Import por username** — ¿mantener (recomendado, la Fase 1 lo mejora) o cortar para simplificar? *(bloquea nada, pero define scope)*
 2. **Arrancar por Fase 1** — la primera sub-tarea (persistir perfil + enchufarlo al pool) es acotada y verificable en vivo. ¿Luz verde?
-3. **Persistencia en deploy** (Fase 2) — volumen de Railway (SQLite) vs migrar a Postgres.
+3. **Persistencia en deploy** (Fase 2) — disco persistente de Render (SQLite) vs migrar a Postgres.
 4. **Stitch en diseño** (Fase 3) — vía MCP vs `DESIGN.md`; y qué pasos del doc base44 se saltan.
 
 ---

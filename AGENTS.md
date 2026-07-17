@@ -6,7 +6,7 @@
 
 ## Quién soy
 
-Estudiante de Data Science (UBA, 2do año, egreso estimado fines de 2028), buscando activamente pasantías/entry-level en Data Science/Analytics. Desarrollador independiente construyendo portfolio full-stack: FastAPI (Python) + React/TypeScript/Vite, backend en Railway, frontend en Vercel. Inglés C1, aplico tanto en mercado argentino como internacional.
+Estudiante de Data Science (UBA, 2do año, egreso estimado fines de 2028), buscando activamente pasantías/entry-level en Data Science/Analytics. Desarrollador independiente construyendo portfolio full-stack: FastAPI (Python) + React/TypeScript/Vite, frontend en Vercel, backend en Render. Inglés C1, aplico tanto en mercado argentino como internacional.
 
 ## Cómo me gusta que me hables
 
@@ -41,7 +41,7 @@ Avisame cuando terminen; no me hagas ir a chequear yo, pero puedo pedirte `TaskL
 
 ## Preferencias técnicas generales
 
-- **Stack por default:** FastAPI (Python) para backend, React + TypeScript + Vite para frontend. Railway para deploy de backend, Vercel para frontend.
+- **Stack por default:** FastAPI (Python) para backend, React + TypeScript + Vite para frontend. Vercel para frontend, Render para deploy de backend.
 - **Naming:** para variables intermedias en matemática/álgebra prefiero notación tipo `f₁, f₂` en vez de nombres largos descriptivos. En código, nombres descriptivos están bien.
 - Evito sustituciones de cambio de variable cuando se puede resolver por expansión algebraica directa (esto es más para tutoría de matemática que para código, pero mismo principio: preferí el camino más directo y transparente, no el más "elegante").
 - **Diseño/frontend:** nada de estética genérica de IA (Inter/Roboto por todos lados, gradientes violetas, layouts cookie-cutter). Si el pedido de diseño es abierto, proponeme 3-4 direcciones visuales concretas (paleta hex + tipografía + un renglón de justificación) antes de construir, en vez de tirarte a un estilo por default.
