@@ -1,5 +1,14 @@
 # Direcciones visuales
 
+> **Nota (2026-07-17):** este doc es la propuesta original de Fase 0. Ninguna de
+> las 4 opciones de abajo terminó siendo el tema realmente implementado en ningún
+> momento — el frontend pasó por un tema "cinematic" dark-first no documentado acá,
+> y hoy corre el sistema "Hybrid critic notebook" (papel/tinta/terracota + dark
+> mode real, tipografía `Inter Black` + `Playfair Display Italic` + `JetBrains
+> Mono`) portado desde una iteración en Lovable — ver `DESIGN.md` y
+> `docs/mvp-status.md` para el estado vigente. Se deja este doc como referencia
+> histórica de la primera exploración de dirección visual.
+
 No iría por "app de streaming genérica". Tiene que sentirse más curada, más cinéfila y más personal.
 
 ## Opción 1 - Cineclub Editorial

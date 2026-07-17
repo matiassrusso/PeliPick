@@ -1,8 +1,6 @@
-import { AlertCircle, ArrowRight, Loader2, LogIn } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { useLocation } from "wouter";
 
-import { Navbar } from "@/components/Navbar";
 import { PageTransition } from "@/components/PageTransition";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -35,60 +33,75 @@ export default function Login() {
   }
 
   return (
-    <PageTransition className="min-h-screen bg-background film-grain">
-      <Navbar />
-
-      <div className="min-h-screen flex items-center justify-center pt-16 px-6">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-5">
-              <LogIn className="w-6 h-6 text-primary" />
-            </div>
-            <h1 className="text-3xl font-serif mb-2" style={{ fontFamily: "'Instrument Serif', serif" }}>
-              {mode === "login" ? "Entrá a tu cuenta" : "Creá tu cuenta"}
+    <PageTransition>
+      <main className="grid grid-cols-1 lg:grid-cols-2 min-h-[calc(100vh-4rem)]">
+        <div className="bg-foreground text-background p-12 lg:p-16 flex flex-col justify-between gap-16">
+          <div className="font-mono text-[10px] uppercase tracking-widest opacity-60">
+            [Access · PeliPick]
+          </div>
+          <div>
+            <h1 className="text-6xl md:text-7xl xl:text-8xl font-black uppercase tracking-tighter leading-[0.85] mb-8">
+              Volvé a la{" "}
+              <span className="text-accent italic font-serif normal-case tracking-normal">función</span>.
             </h1>
-            <p className="text-muted-foreground text-sm">
-              Necesitamos un usuario para guardar tu historial y tus recomendaciones.
+            <p className="font-serif italic text-2xl leading-snug opacity-80 max-w-md">
+              "Cinema is a matter of what's in the frame and what's out."
             </p>
           </div>
+          <div className="font-mono text-[10px] uppercase tracking-widest opacity-40">
+            — Martin Scorsese
+          </div>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <label className="block">
-              <span className="text-sm text-muted-foreground mb-1.5 block">Usuario</span>
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                minLength={3}
-                required
-                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors duration-200"
-              />
-            </label>
+        <div className="p-12 lg:p-16 flex items-center">
+          <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-8">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                {mode === "register" ? "[Registro nuevo]" : "[Volvés]"}
+              </div>
+              <h2 className="text-3xl font-black uppercase tracking-tighter">
+                {mode === "register" ? "Creá tu cuenta" : "Entrá"}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-2">
+                Necesitamos un usuario para guardar tu historial y tus recomendaciones.
+              </p>
+            </div>
 
-            <label className="block">
-              <span className="text-sm text-muted-foreground mb-1.5 block">Contraseña</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                minLength={8}
-                required
-                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors duration-200"
-              />
-            </label>
+            <div className="space-y-6">
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Usuario
+                </span>
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  minLength={3}
+                  required
+                  className="mt-2 w-full bg-transparent border-b-2 border-foreground py-3 font-mono placeholder:text-muted-foreground focus:outline-none focus:border-accent"
+                />
+              </label>
+
+              <label className="block">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Password
+                </span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  minLength={8}
+                  required
+                  className="mt-2 w-full bg-transparent border-b-2 border-foreground py-3 font-mono focus:outline-none focus:border-accent"
+                />
+              </label>
+            </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3.5 rounded-xl font-medium hover:bg-primary/90 transition-all duration-200 active:scale-95 disabled:opacity-60 amber-glow"
+              className="w-full py-4 bg-foreground text-background font-mono text-xs uppercase tracking-widest hover:bg-accent transition-colors disabled:opacity-60"
             >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  {mode === "login" ? "Entrar" : "Crear cuenta"}
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
+              {loading ? "..." : mode === "register" ? "Crear cuenta →" : "Entrar →"}
             </button>
 
             <button
@@ -97,20 +110,19 @@ export default function Login() {
                 setMode(mode === "login" ? "register" : "login");
                 setError("");
               }}
-              className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 py-2"
+              className="w-full font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-accent transition-colors"
             >
-              {mode === "login" ? "¿No tenés cuenta? Registrate" : "¿Ya tenés cuenta? Entrá"}
+              {mode === "login" ? "¿Primera vez? Registrate" : "¿Ya tenés cuenta? Entrá"}
             </button>
-          </form>
 
-          {error ? (
-            <div className="mt-4 p-4 rounded-xl border border-destructive/30 bg-destructive/5 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          ) : null}
+            {error ? (
+              <div className="p-4 border-2 border-destructive/50 font-mono text-xs text-destructive">
+                {error}
+              </div>
+            ) : null}
+          </form>
         </div>
-      </div>
+      </main>
     </PageTransition>
   );
 }

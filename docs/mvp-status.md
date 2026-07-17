@@ -128,6 +128,25 @@
   `IBM Plex Sans`), animaciones con Framer Motion, páginas Home / Login /
   Recommend (upload del zip + mood + resultados con feedback) / History /
   NotFound
+- rediseño completo "Hybrid critic notebook" (2026-07-17): identidad propia
+  iterada primero en Stitch y después en Lovable (repo
+  `matiassrusso/pixel-perfect-clone-61381`, visual only con datos mock), portada
+  a mano al frontend real conservando toda la lógica/fetch existente. Paleta
+  papel/tinta/terracota `#C2410C` con dark mode real (antes el tema "cinematic"
+  no tenía toggle), tipografía `Inter Black` uppercase + `Playfair Display
+  Italic` (el "why" de cada pick) + `JetBrains Mono` (labels/callouts/metadata),
+  `radius: 0`, bordes gruesos editoriales. Nav y footer se centralizaron en
+  `App.tsx` en vez de repetirse por página. Se retiraron `PixelCard` y
+  `GooeyNav` (reemplazados por elementos planos del nuevo sistema). Gaps de
+  datos reales vs. el mock de Lovable resueltos por honestidad en vez de
+  inventar: se sacó "Dir. X" de las cards/modal (ni `Recommendation` ni
+  `MovieDetails` traen director hoy) y las stats fabricadas del footer ("42.8k
+  films indexed"); la tabla de "Vistas" en History quedó con las columnas que
+  sí tiene `WatchedItem` (sin año/director). Verificado en vivo end-to-end con
+  el username real `scorsese`: registro, login, import por username, picks con
+  Gemini citando títulos reales del historial, modal con cast/tráiler real,
+  feedback, History (ambas pestañas) y Profile con datos reales, toggle de
+  tema dark⇄light
 - build verificado de frontend
 - deploy: frontend en Vercel ([pelipick.vercel.app](https://pelipick.vercel.app/)),
   backend en Render ([pelipick-backend.onrender.com](https://pelipick-backend.onrender.com)).

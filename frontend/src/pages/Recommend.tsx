@@ -1,31 +1,19 @@
-import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   CheckCircle,
-  Clock,
   Eye,
   ExternalLink,
-  FileText,
   Film,
   Loader2,
-  RefreshCw,
-  Sparkles,
-  Star,
-  Tags,
   ThumbsDown,
   ThumbsUp,
-  Upload as UploadIcon,
-  User,
-  X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
-import { Navbar } from "@/components/Navbar";
 import { PageTransition } from "@/components/PageTransition";
-import PixelCard from "@/components/PixelCard";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
 
 type Recommendation = {
@@ -55,34 +43,13 @@ type RecommendResponse = {
 
 type FeedbackStatus = "interested" | "not_interested" | "seen";
 
-const feedbackOptions: { status: FeedbackStatus; label: string; icon: typeof ThumbsUp }[] = [
-  { status: "interested", label: "Me interesa", icon: ThumbsUp },
-  { status: "not_interested", label: "No me interesa", icon: ThumbsDown },
-  { status: "seen", label: "Ya la vi", icon: Eye },
-];
-
 type RecommendMode = "profile" | "recent" | "genres";
 type KindFilter = "movie" | "series" | "both";
 
-const modeOptions: { mode: RecommendMode; label: string; description: string; icon: typeof User }[] = [
-  {
-    mode: "profile",
-    label: "Según mi perfil",
-    description: "Analiza todo tu historial de ratings y reviews.",
-    icon: User,
-  },
-  {
-    mode: "recent",
-    label: "Según lo último que vi",
-    description: "Se basa solo en las películas que viste más recientemente.",
-    icon: Clock,
-  },
-  {
-    mode: "genres",
-    label: "Por géneros",
-    description: "Elegís uno o más géneros y buscamos algo de esa mezcla.",
-    icon: Tags,
-  },
+const modeOptions: { mode: RecommendMode; label: string }[] = [
+  { mode: "profile", label: "Perfil completo" },
+  { mode: "recent", label: "Últimas vistas" },
+  { mode: "genres", label: "Selección de géneros" },
 ];
 
 const kindFilterOptions: { value: KindFilter; label: string }[] = [
@@ -105,6 +72,11 @@ const genreOptions: { key: string; label: string }[] = [
 function formatFileSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+const tabCls = (active: boolean) =>
+  `flex-1 py-3 font-mono text-[10px] uppercase tracking-widest border transition-colors ${
+    active ? "bg-foreground text-background border-foreground" : "border-foreground/20 hover:border-foreground"
+  }`;
 
 // ─── Movie Detail Modal ─────────────────────────────────────────────────────
 
@@ -162,161 +134,131 @@ function MovieModal({
     };
   }, [rec.tmdb_id, rec.kind, token]);
 
+  const btn = "flex-1 py-3 font-mono text-[10px] uppercase tracking-widest border transition-colors";
+
   return createPortal(
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+    <div
+      className="fixed inset-0 z-[100] bg-foreground/60 backdrop-blur-sm flex items-start justify-center p-6 overflow-y-auto"
       onClick={onClose}
     >
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-
-      <motion.div
-        initial={{ opacity: 0, y: 40, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 20, scale: 0.98 }}
-        transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+      <div
+        className="bg-background max-w-4xl w-full mt-12 mb-12 border-2 border-foreground"
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl"
       >
-        {rec.backdrop_path && (
-          <div className="relative h-48 overflow-hidden rounded-t-2xl">
-            <img src={rec.backdrop_path} alt={rec.title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-card via-card/60 to-transparent" />
-          </div>
-        )}
-
-        <div className="p-6">
-          <button
-            onClick={onClose}
-            aria-label="Cerrar detalle"
-            className="absolute top-4 right-4 p-2 rounded-xl bg-background/80 backdrop-blur-sm border border-border hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
+        <div className="flex justify-between items-baseline border-b-2 border-foreground px-6 py-4">
+          <span className="font-mono text-[10px] uppercase tracking-widest">
+            [Detail] · {rec.id}
+          </span>
+          <button onClick={onClose} className="font-mono text-xs hover:text-accent">
+            [close ×]
           </button>
-
-          <div className="flex gap-5">
-            {rec.poster_path && (
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8 p-6">
+          <div className="md:col-span-2">
+            {rec.poster_path ? (
               <img
                 src={rec.poster_path}
                 alt={rec.title}
-                className="w-24 h-36 rounded-xl object-cover shrink-0 shadow-xl border border-border"
+                className="w-full aspect-[2/3] object-cover outline outline-1 -outline-offset-1 outline-black/10"
               />
+            ) : (
+              <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+                <Film className="w-10 h-10 text-muted-foreground/40" />
+              </div>
+            )}
+          </div>
+          <div className="md:col-span-3 flex flex-col">
+            <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-[0.9] mb-4">
+              {rec.title}
+            </h2>
+            <div className="font-mono text-xs text-muted-foreground uppercase tracking-widest mb-6">
+              {rec.year}
+              {rec.kind === "series" ? " · Serie" : ""}
+              {rec.vote_average != null ? ` · ★ ${rec.vote_average.toFixed(1)}` : ""}
+              {" · "}
+              {rec.match_score}% match
+            </div>
+            <p className="font-serif text-2xl italic leading-snug text-balance mb-6">
+              &ldquo;{rec.why}&rdquo;
+            </p>
+
+            {rec.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-6">
+                {rec.tags.map((tag) => (
+                  <span key={tag} className="font-mono text-[10px] uppercase px-2 py-1 border border-foreground/20">
+                    {tag}
+                  </span>
+                ))}
+              </div>
             )}
 
-            <div className="flex-1 min-w-0">
-              <h2 className="text-2xl font-serif mb-1 leading-tight" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                {rec.title}
-              </h2>
-              <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-muted-foreground">
-                {rec.kind === "series" && (
-                  <span className="px-2 py-0.5 rounded-full bg-secondary text-xs">Serie</span>
+            {rec.overview && (
+              <p className="text-sm text-muted-foreground leading-relaxed mb-6">{rec.overview}</p>
+            )}
+
+            {loadingDetails && (
+              <div className="border-t border-foreground/10 pt-4 mb-6 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Cargando reparto y tráiler...
+              </div>
+            )}
+
+            {details && (details.cast.length > 0 || details.trailer_key) && (
+              <div className="border-t border-foreground/10 pt-4 mb-6">
+                {details.trailer_key && (
+                  <a
+                    href={`https://www.youtube.com/watch?v=${details.trailer_key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-4 inline-flex items-center gap-2 px-4 py-2 border border-foreground/30 font-mono text-[10px] uppercase tracking-widest hover:border-accent hover:text-accent transition-colors"
+                  >
+                    <Film className="w-3.5 h-3.5" />
+                    Ver tráiler
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
                 )}
-                <span>{rec.year}</span>
-                {rec.vote_average != null && (
-                  <span className="flex items-center gap-1">
-                    <Star className="w-3 h-3 fill-primary text-primary" />
-                    {rec.vote_average.toFixed(1)}
-                  </span>
+                {details.cast.length > 0 && (
+                  <>
+                    <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+                      Cast
+                    </div>
+                    <div className="text-sm">
+                      {details.cast.map((c) => c.name).join(" · ")}
+                    </div>
+                  </>
                 )}
-                <span className="px-2 py-0.5 rounded-full bg-secondary text-xs">{rec.match_score}% match</span>
+              </div>
+            )}
+
+            <div className="mt-auto pt-4 border-t border-foreground/10">
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
+                ¿Qué te parece este pick?
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onFeedback("interested")}
+                  className={`${btn} ${feedback === "interested" ? "bg-foreground text-background border-foreground" : "border-foreground/30 hover:border-foreground"}`}
+                >
+                  Me interesa
+                </button>
+                <button
+                  onClick={() => onFeedback("seen")}
+                  className={`${btn} ${feedback === "seen" ? "bg-secondary border-foreground" : "border-foreground/30 hover:border-foreground"}`}
+                >
+                  Ya la vi
+                </button>
+                <button
+                  onClick={() => onFeedback("not_interested")}
+                  className={`${btn} ${feedback === "not_interested" ? "bg-accent text-accent-foreground border-accent" : "border-foreground/30 hover:border-foreground"}`}
+                >
+                  No me interesa
+                </button>
               </div>
             </div>
           </div>
-
-          <div className="mt-5 p-4 rounded-xl border border-primary/20 bg-primary/5">
-            <p className="text-xs text-primary uppercase tracking-wider mb-2 font-medium flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" />
-              Por qué esta peli para vos
-            </p>
-            <p className="text-sm leading-relaxed text-foreground/80">{rec.why}</p>
-          </div>
-
-          {rec.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-4">
-              {rec.tags.map((tag) => (
-                <span key={tag} className="px-2.5 py-1 rounded-full text-xs border border-primary/20 text-primary/80 bg-primary/5">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {rec.overview && <p className="mt-4 text-sm text-muted-foreground leading-relaxed">{rec.overview}</p>}
-
-          {loadingDetails && (
-            <div className="mt-5 pt-5 border-t border-border flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Cargando reparto y tr&aacute;iler...
-            </div>
-          )}
-
-          {details && (details.cast.length > 0 || details.trailer_key) && (
-            <section className="mt-5 pt-5 border-t border-border">
-              {details.trailer_key && (
-                <a
-                  href={`https://www.youtube.com/watch?v=${details.trailer_key}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mb-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-primary/30 bg-primary/10 text-sm text-primary hover:bg-primary/20 transition-colors"
-                >
-                  <Film className="w-4 h-4" />
-                  Ver tr&aacute;iler
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              )}
-
-              {details.cast.length > 0 && (
-                <>
-                  <h3 className="text-xl font-serif mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                    Reparto
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {details.cast.map((member) => (
-                      <div key={`${member.name}-${member.character}`} className="flex items-center gap-2.5 rounded-xl bg-background/60 p-2.5 min-w-0">
-                        {member.profile_path ? (
-                          <img src={member.profile_path} alt={member.name} className="w-10 h-10 rounded-full object-cover shrink-0" />
-                        ) : (
-                          <span className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center shrink-0 text-sm text-primary" aria-label={`Sin foto de ${member.name}`}>
-                            {member.name.charAt(0)}
-                          </span>
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm leading-tight truncate">{member.name}</p>
-                          {member.character && <p className="text-xs text-muted-foreground truncate mt-0.5">{member.character}</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </section>
-          )}
-
-          <div className="mt-6 pt-5 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-3">¿Qué te parece este pick?</p>
-            <div className="flex gap-3">
-              {feedbackOptions.map((option) => (
-                <button
-                  key={option.status}
-                  onClick={() => onFeedback(option.status)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm border transition-all duration-200 active:scale-95 ${
-                    feedback === option.status
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:border-primary/50 hover:bg-primary/5"
-                  }`}
-                >
-                  <option.icon className="w-4 h-4" />
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
-      </motion.div>
-    </motion.div>,
+      </div>
+    </div>,
     document.body,
   );
 }
@@ -328,136 +270,61 @@ function RecommendationCard({
   index,
   feedback,
   onSelect,
-  onFeedback,
 }: {
   rec: Recommendation;
   index: number;
   feedback?: FeedbackStatus;
   onSelect: () => void;
-  onFeedback: (status: FeedbackStatus) => void;
 }) {
   const poster = rec.poster_path ?? rec.backdrop_path;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 40 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.1, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
-      className="flex flex-col gap-3"
+    <button
+      type="button"
+      onClick={onSelect}
+      className="animate-reveal text-left group block w-full"
+      style={{ animationDelay: `${100 + index * 100}ms` }}
     >
-      <PixelCard variant="amber" className="pelipick-poster" onClick={onSelect}>
+      <div className="mb-6 relative overflow-hidden">
         {poster ? (
           <img
             src={poster}
             alt={rec.title}
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ zIndex: 0 }}
+            loading="lazy"
+            className="w-full aspect-[2/3] object-cover bg-secondary outline outline-1 -outline-offset-1 outline-black/10 transition-transform duration-500 group-hover:scale-[1.02]"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-secondary to-background" style={{ zIndex: 0 }}>
-            <Film className="w-12 h-12 text-muted-foreground/30" />
+          <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+            <Film className="w-10 h-10 text-muted-foreground/40" />
           </div>
         )}
-
-        <div
-          className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/20"
-          style={{ zIndex: 2 }}
-        />
-
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-3" style={{ zIndex: 3 }}>
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 flex items-center justify-center text-xs font-medium text-primary">
-              {index + 1}
-            </span>
-            {rec.kind === "series" && (
-              <span className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-sm border border-white/15 text-[10px] font-medium text-white/80">
-                Serie
-              </span>
-            )}
-          </div>
-          {feedback && (
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                feedback === "interested"
-                  ? "bg-primary"
-                  : feedback === "seen"
-                    ? "bg-black/60 border border-white/15"
-                    : "bg-destructive/30 border border-destructive/40"
-              }`}
-            >
-              {feedback === "interested" && <ThumbsUp className="w-3.5 h-3.5 text-primary-foreground" />}
-              {feedback === "seen" && <Eye className="w-3.5 h-3.5 text-white/80" />}
-              {feedback === "not_interested" && <ThumbsDown className="w-3.5 h-3.5 text-destructive" />}
-            </span>
-          )}
+        <div className="absolute -top-3 -right-3 size-16 bg-accent flex items-center justify-center text-accent-foreground font-mono text-lg font-bold shadow-lg">
+          {rec.match_score}%
         </div>
-
-        <div className="absolute inset-x-0 bottom-0 p-4" style={{ zIndex: 3 }}>
-          <h3
-            className="text-lg font-serif leading-tight mb-1 text-white"
-            style={{ fontFamily: "'Instrument Serif', serif" }}
-          >
-            {rec.title}
-          </h3>
-          <div className="flex items-center gap-2 text-xs text-white/70 mb-2">
-            <span>{rec.year}</span>
-            {rec.vote_average != null && (
-              <span className="flex items-center gap-0.5">
-                <Star className="w-2.5 h-2.5 fill-primary text-primary" />
-                {rec.vote_average.toFixed(1)}
-              </span>
-            )}
-            <span className="text-primary">{rec.match_score}% match</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {rec.tags.slice(0, 3).map((tag) => (
-              <span
-                key={tag}
-                className="px-2 py-0.5 rounded-full text-[10px] border border-white/20 text-white/80 bg-black/30 backdrop-blur-sm"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        </div>
-      </PixelCard>
-
-      <div className="flex gap-2">
-        <button
-          onClick={() => onFeedback("interested")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs border transition-all duration-200 active:scale-95 ${
-            feedback === "interested"
-              ? "bg-primary text-primary-foreground border-primary"
-              : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
-          }`}
-        >
-          <ThumbsUp className="w-3.5 h-3.5" />
-          Me interesa
-        </button>
-        <button
-          onClick={() => onFeedback("seen")}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all duration-200 active:scale-95 ${
-            feedback === "seen"
-              ? "bg-secondary text-foreground border-border"
-              : "border-border hover:border-border/80 hover:bg-secondary text-muted-foreground"
-          }`}
-          aria-label="Ya la vi"
-        >
-          <Eye className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={() => onFeedback("not_interested")}
-          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border transition-all duration-200 active:scale-95 ${
-            feedback === "not_interested"
-              ? "bg-destructive/20 text-destructive border-destructive/30"
-              : "border-border hover:border-destructive/30 hover:bg-destructive/5 text-muted-foreground"
-          }`}
-          aria-label="No me interesa"
-        >
-          <ThumbsDown className="w-3.5 h-3.5" />
-        </button>
+        {rec.kind === "series" && (
+          <span className="absolute top-3 left-3 font-mono text-[10px] uppercase px-2 py-1 bg-background border border-foreground/20">
+            Serie
+          </span>
+        )}
+        {feedback && (
+          <span className="absolute bottom-3 left-3 size-7 bg-background border border-foreground/20 flex items-center justify-center">
+            {feedback === "interested" && <ThumbsUp className="w-3.5 h-3.5 text-accent" />}
+            {feedback === "seen" && <Eye className="w-3.5 h-3.5 text-muted-foreground" />}
+            {feedback === "not_interested" && <ThumbsDown className="w-3.5 h-3.5 text-destructive" />}
+          </span>
+        )}
       </div>
-    </motion.div>
+      <div className="flex justify-between items-baseline gap-4 mb-4">
+        <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">{rec.title}</h3>
+        <span className="font-mono text-xs text-muted-foreground shrink-0">{rec.year}</span>
+      </div>
+      <p className="font-serif text-xl leading-snug mb-4 italic text-balance">
+        &ldquo;{rec.why}&rdquo;
+      </p>
+      <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-t border-foreground/10 pt-4">
+        {rec.tags.slice(0, 3).join(" / ") || "Sin tags"}
+      </div>
+    </button>
   );
 }
 
@@ -537,9 +404,7 @@ export default function Recommend() {
 
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -570,10 +435,7 @@ export default function Recommend() {
     try {
       const response = await fetch(`${API_BASE_URL}/feedback`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ recommendation_id: recommendationId, status }),
       });
 
@@ -586,76 +448,41 @@ export default function Recommend() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <PageTransition className="min-h-screen bg-background film-grain">
-      <Navbar />
+    <PageTransition>
+      <main className="max-w-7xl mx-auto px-6 pt-16 pb-24">
+        <header className="pb-10 border-b-2 border-foreground mb-12">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+            [Personalizado para vos]
+          </div>
+          <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9]">
+            Tus <span className="text-accent italic font-serif normal-case tracking-normal">picks</span> de peli
+          </h1>
+        </header>
 
-      <div className="pt-24 pb-16">
-        <div className="container max-w-6xl">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="mb-10">
-            <p className="text-primary text-sm uppercase tracking-widest mb-3 font-medium">Personalizado para vos</p>
-            <h1 className="text-4xl md:text-5xl font-serif mb-4" style={{ fontFamily: "'Instrument Serif', serif" }}>
-              Tus <em className="text-gradient not-italic">picks de peli</em>
-            </h1>
-            <p className="text-muted-foreground leading-relaxed max-w-2xl">
-              Cada recomendación está basada en tu historial real — tus ratings, tus reviews, tus
-              patrones. No un algoritmo genérico.
-            </p>
-          </motion.div>
+        {!result && !loading && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+            <aside className="lg:col-span-4 space-y-10 lg:sticky lg:top-24 lg:self-start">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-widest mb-3 text-muted-foreground">
+                  [01] Fuente
+                </div>
+                <div className="flex gap-0 mb-4">
+                  <button onClick={() => setImportMethod("zip")} className={tabCls(importMethod === "zip")}>
+                    Subir .zip
+                  </button>
+                  <button onClick={() => setImportMethod("username")} className={tabCls(importMethod === "username")}>
+                    Username
+                  </button>
+                </div>
 
-          {!result && !loading && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="max-w-2xl">
-              <div className="grid grid-cols-2 gap-3 mb-6">
-                <button
-                  type="button"
-                  onClick={() => setImportMethod("zip")}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm border transition-all duration-200 ${
-                    importMethod === "zip"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
-                  }`}
-                >
-                  <UploadIcon className="w-4 h-4" />
-                  Subir mi .zip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setImportMethod("username")}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm border transition-all duration-200 ${
-                    importMethod === "username"
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
-                  }`}
-                >
-                  <User className="w-4 h-4" />
-                  Mi username de Letterboxd
-                </button>
-              </div>
-
-              {importMethod === "zip" ? (
-                <>
-                  <div className="p-5 rounded-xl border border-border bg-card/30 mb-6">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <ExternalLink className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-medium mb-2">Cómo exportar de Letterboxd</h3>
-                        <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                          <li>Letterboxd → Settings → pestaña Data</li>
-                          <li>"Export your data" — descarga un .zip</li>
-                          <li>Subí ese .zip tal cual, sin descomprimir, acá abajo</li>
-                        </ol>
-                      </div>
-                    </div>
-                  </div>
-
+                {importMethod === "zip" ? (
                   <div
                     onDrop={handleDrop}
                     onDragOver={(e) => {
@@ -664,95 +491,70 @@ export default function Recommend() {
                     }}
                     onDragLeave={() => setIsDragging(false)}
                     onClick={() => fileInputRef.current?.click()}
-                    className={`relative border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-300 mb-6 ${
-                      isDragging ? "border-primary bg-primary/5 scale-[1.01]" : "border-border hover:border-primary/50 hover:bg-card/30"
+                    className={`border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
+                      isDragging ? "border-accent bg-accent/5" : "border-foreground/30 hover:border-foreground"
                     }`}
                   >
                     <input ref={fileInputRef} type="file" accept=".zip,application/zip" onChange={handleFileInput} className="hidden" />
-                    <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                      <UploadIcon className="w-6 h-6 text-primary" />
-                    </div>
-                    <h3 className="text-lg font-serif mb-1" style={{ fontFamily: "'Instrument Serif', serif" }}>
+                    <div className="font-mono text-xs uppercase tracking-widest mb-2">
                       {isDragging ? "Soltalo acá" : "Arrastrá tu .zip acá"}
-                    </h3>
-                    <p className="text-muted-foreground text-sm mb-3">o hacé click para buscarlo</p>
+                    </div>
+                    <div className="font-mono text-[10px] text-muted-foreground mb-3">o click para elegir</div>
                     {zipFile ? (
-                      <div className="inline-flex items-center gap-2 text-xs text-primary bg-primary/10 px-3 py-1.5 rounded-full">
+                      <div className="inline-flex items-center gap-2 font-mono text-[10px] text-accent">
                         <CheckCircle className="w-3 h-3" />
                         {zipFile.name} · {formatFileSize(zipFile.size)}
                       </div>
                     ) : (
-                      <div className="inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-3 py-1.5 rounded-full">
-                        <FileText className="w-3 h-3" />
-                        Solo .zip
-                      </div>
+                      <div className="font-mono text-[10px] text-muted-foreground/60">Solo .zip</div>
                     )}
                   </div>
-                </>
-              ) : (
-                <div className="mb-6">
-                  <div className="p-5 rounded-xl border border-border bg-card/30 mb-4">
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-                        <User className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm font-medium mb-2">Importar por username</h3>
-                        <p className="text-sm text-muted-foreground leading-snug">
-                          Leemos tu diario público de Letterboxd (ratings, fechas y rewatches). Solo
-                          cubre lo que quede registrado ahí — no likes ni favoritos. Tu perfil tiene
-                          que ser público.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <label className="block">
-                    <span className="text-sm font-medium mb-2 block">Tu username de Letterboxd</span>
+                ) : (
+                  <div>
+                    <p className="font-mono text-[10px] uppercase leading-relaxed text-muted-foreground mb-3">
+                      Leemos tu diario público de Letterboxd (ratings, fechas, rewatches). No
+                      cubre likes/favoritos. Tu perfil tiene que ser público.
+                    </p>
                     <input
-                      type="text"
                       value={letterboxdUsername}
                       onChange={(e) => setLetterboxdUsername(e.target.value)}
                       placeholder="ej: scorsese"
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-card/50 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+                      className="w-full bg-transparent border-b-2 border-foreground py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent"
                     />
-                  </label>
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
 
-              <div className="p-6 rounded-2xl border border-border bg-card/50">
-                <span className="text-sm font-medium mb-3 block">Qué querés ver hoy</span>
-                <div className="grid sm:grid-cols-3 gap-3 mb-2">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-widest mb-3 text-muted-foreground">
+                  [02] Qué querés ver hoy
+                </div>
+                <div className="space-y-2">
                   {modeOptions.map((option) => (
                     <button
                       key={option.mode}
-                      type="button"
                       onClick={() => setMode(option.mode)}
-                      className={`text-left p-3.5 rounded-xl border transition-all duration-200 ${
+                      className={`w-full text-left px-4 py-3 border font-mono text-xs uppercase tracking-widest transition-colors ${
                         mode === option.mode
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/40 hover:bg-card/60"
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-foreground/20 hover:border-foreground"
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
-                        <option.icon className={`w-4 h-4 ${mode === option.mode ? "text-primary" : "text-muted-foreground"}`} />
-                        <span className="text-sm font-medium">{option.label}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground leading-snug">{option.description}</p>
+                      <span className="text-accent mr-2">{mode === option.mode ? "●" : "○"}</span>
+                      {option.label}
                     </button>
                   ))}
                 </div>
-
                 {mode === "genres" && (
-                  <div className="mb-5 mt-3 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {genreOptions.map((genre) => (
                       <button
                         key={genre.key}
-                        type="button"
                         onClick={() => toggleGenre(genre.key)}
-                        className={`px-3 py-1.5 rounded-full text-xs border transition-all duration-200 ${
+                        className={`px-3 py-1 font-mono text-[10px] uppercase tracking-widest border transition-colors ${
                           selectedGenres.includes(genre.key)
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
+                            ? "bg-accent text-accent-foreground border-accent"
+                            : "border-foreground/20 hover:border-foreground"
                         }`}
                       >
                         {genre.label}
@@ -761,113 +563,92 @@ export default function Recommend() {
                   </div>
                 )}
                 {mode === "genres" && selectedGenres.length === 0 && (
-                  <p className="text-xs text-destructive/80 mb-5 -mt-2">Elegí al menos un género.</p>
+                  <p className="font-mono text-[10px] text-destructive mt-2">Elegí al menos un género.</p>
                 )}
-                {mode !== "genres" && <div className="mb-5" />}
-
-                <label className="block mb-5">
-                  <span className="text-sm font-medium mb-2 block">Qué querés que te recomiende</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {kindFilterOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setKindFilter(option.value)}
-                        className={`py-2.5 rounded-xl text-sm border transition-all duration-200 ${
-                          kindFilter === option.value
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "border-border hover:border-primary/50 hover:bg-primary/5 text-muted-foreground"
-                        }`}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-
-                <button
-                  onClick={handleGenerate}
-                  disabled={loading || !canGenerate}
-                  className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground py-3.5 rounded-xl font-medium hover:bg-primary/90 transition-all duration-200 active:scale-95 disabled:opacity-60 amber-glow"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Dame mis recomendaciones
-                </button>
               </div>
-            </motion.div>
-          )}
 
-          {loading && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-6">
-                <Loader2 className="w-7 h-7 text-primary animate-spin" />
-              </div>
-              <h3 className="text-2xl font-serif mb-3" style={{ fontFamily: "'Instrument Serif', serif" }}>
-                Buscando tus pelis...
-              </h3>
-              <p className="text-muted-foreground text-sm max-w-sm mx-auto">
-                Leyendo tu historial y buscando candidatos que encajen con tu gusto.
-              </p>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-12 text-left">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
-                    <div className="skeleton h-44 w-full" />
-                    <div className="p-5 space-y-3">
-                      <div className="skeleton h-5 w-3/4 rounded-lg" />
-                      <div className="skeleton h-4 w-1/2 rounded-lg" />
-                      <div className="skeleton h-16 w-full rounded-xl" />
-                      <div className="skeleton h-9 w-full rounded-lg" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {error && !loading ? (
-            <div className="mt-4 p-4 rounded-xl border border-destructive/30 bg-destructive/5 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          ) : null}
-
-          {result && !loading && (
-            <>
-              <div className="flex items-center justify-between mb-8 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">{result.recommendations.length} películas para vos</p>
-                  <p className="text-xs text-muted-foreground/70 max-w-xl">{result.taste_summary}</p>
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-widest mb-3 text-muted-foreground">
+                  [03] Formato
                 </div>
-                <button
-                  onClick={() => {
-                    setResult(null);
-                    setFeedbackState({});
-                  }}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors duration-200 px-4 py-2 rounded-xl border border-border hover:border-border/80 hover:bg-secondary shrink-0"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Nuevos picks
-                </button>
+                <div className="flex gap-0">
+                  {kindFilterOptions.map((option) => (
+                    <button key={option.value} onClick={() => setKindFilter(option.value)} className={tabCls(kindFilter === option.value)}>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {result.recommendations.map((rec, i) => (
-                  <RecommendationCard
-                    key={rec.id}
-                    rec={rec}
-                    index={i}
-                    feedback={feedbackState[rec.id]}
-                    onSelect={() => setSelectedRec(rec)}
-                    onFeedback={(status) => submitFeedback(rec.id, status)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+              <button
+                onClick={handleGenerate}
+                disabled={loading || !canGenerate}
+                className="w-full px-8 py-4 bg-accent text-accent-foreground font-mono text-xs uppercase tracking-widest hover:bg-foreground hover:text-background transition-colors disabled:opacity-60"
+              >
+                Dame mis recomendaciones
+              </button>
+            </aside>
 
-      <AnimatePresence>
+            <section className="lg:col-span-8">
+              <div className="p-8 border-2 border-dashed border-foreground/20 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Tus picks van a aparecer acá
+              </div>
+            </section>
+          </div>
+        )}
+
+        {loading && (
+          <div className="py-20 text-center">
+            <Loader2 className="w-7 h-7 text-accent animate-spin mx-auto mb-6" />
+            <h3 className="text-2xl font-black uppercase tracking-tighter mb-3">Buscando tus pelis...</h3>
+            <p className="font-mono text-xs uppercase text-muted-foreground max-w-sm mx-auto">
+              Leyendo tu historial y buscando candidatos que encajen con tu gusto.
+            </p>
+          </div>
+        )}
+
+        {error && !loading ? (
+          <div className="mt-4 p-4 border-2 border-destructive/50 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+            <p className="font-mono text-xs text-destructive">{error}</p>
+          </div>
+        ) : null}
+
+        {result && !loading && (
+          <>
+            <div className="flex items-center gap-4 mb-12">
+              <span className="font-mono text-xs px-2 py-1 border border-foreground/20">
+                [Resultados · {result.recommendations.length}]
+              </span>
+              <div className="h-px flex-grow bg-foreground/10" />
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hidden md:inline max-w-md truncate">
+                {result.taste_summary}
+              </span>
+              <button
+                onClick={() => {
+                  setResult(null);
+                  setFeedbackState({});
+                }}
+                className="font-mono text-[10px] uppercase tracking-widest hover:text-accent transition-colors shrink-0"
+              >
+                ↻ Nuevos picks
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10">
+              {result.recommendations.map((rec, i) => (
+                <RecommendationCard
+                  key={rec.id}
+                  rec={rec}
+                  index={i}
+                  feedback={feedbackState[rec.id]}
+                  onSelect={() => setSelectedRec(rec)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
         {selectedRec && (
           <MovieModal
             key={selectedRec.id}
@@ -878,7 +659,7 @@ export default function Recommend() {
             onFeedback={(status) => submitFeedback(selectedRec.id, status)}
           />
         )}
-      </AnimatePresence>
+      </main>
     </PageTransition>
   );
 }

@@ -1,8 +1,7 @@
-import { Compass, Loader2, Sparkles } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
-import { Navbar } from "@/components/Navbar";
 import { PageTransition } from "@/components/PageTransition";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
 
@@ -19,16 +18,16 @@ type TasteProfile = {
   top_actors: PersonCount[];
 };
 
-const RADAR_SIZE = 320;
+const RADAR_SIZE = 360;
 const RADAR_CENTER = RADAR_SIZE / 2;
-const RADAR_RADIUS = 110;
+const RADAR_RADIUS = 140;
 
 function GenreRadar({ genres }: { genres: GenreWeight[] }) {
-  const axisCount = genres.length;
+  const n = genres.length;
   const maxWeight = Math.max(...genres.map((g) => g.weight), 1);
 
   const pointFor = (index: number, fraction: number) => {
-    const angle = (Math.PI * 2 * index) / axisCount - Math.PI / 2;
+    const angle = (Math.PI * 2 * index) / n - Math.PI / 2;
     return {
       x: RADAR_CENTER + Math.cos(angle) * RADAR_RADIUS * fraction,
       y: RADAR_CENTER + Math.sin(angle) * RADAR_RADIUS * fraction,
@@ -36,55 +35,34 @@ function GenreRadar({ genres }: { genres: GenreWeight[] }) {
   };
 
   const dataPoints = genres.map((g, i) => pointFor(i, g.weight / maxWeight));
-  const dataPath = `${dataPoints.map((p) => `${p.x},${p.y}`).join(" ")}`;
+  const dataPath = dataPoints.map((p) => `${p.x},${p.y}`).join(" ");
 
   return (
-    <svg viewBox={`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`} className="w-full max-w-md mx-auto">
-      {[0.33, 0.66, 1].map((ring) => (
-        <polygon
-          key={ring}
-          points={genres.map((_, i) => {
-            const p = pointFor(i, ring);
-            return `${p.x},${p.y}`;
-          }).join(" ")}
-          fill="none"
-          stroke="var(--border)"
-          strokeWidth={1}
-        />
+    <svg viewBox={`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`} className="w-full h-auto max-w-md mx-auto">
+      {[0.25, 0.5, 0.75, 1].map((ring) => (
+        <circle key={ring} cx={RADAR_CENTER} cy={RADAR_CENTER} r={RADAR_RADIUS * ring} fill="none" stroke="currentColor" strokeOpacity={0.08} />
       ))}
-
       {genres.map((_, i) => {
         const edge = pointFor(i, 1);
         return (
-          <line
-            key={i}
-            x1={RADAR_CENTER}
-            y1={RADAR_CENTER}
-            x2={edge.x}
-            y2={edge.y}
-            stroke="var(--border)"
-            strokeWidth={1}
-          />
+          <line key={i} x1={RADAR_CENTER} y1={RADAR_CENTER} x2={edge.x} y2={edge.y} stroke="currentColor" strokeOpacity={0.06} />
         );
       })}
-
-      <polygon points={dataPath} fill="var(--primary)" fillOpacity={0.25} stroke="var(--primary)" strokeWidth={2} />
+      <polygon points={dataPath} fill="var(--color-accent)" fillOpacity={0.18} stroke="var(--color-accent)" strokeWidth={2} />
       {dataPoints.map((p, i) => (
-        <circle key={i} cx={p.x} cy={p.y} r={3.5} fill="var(--primary)" />
+        <circle key={i} cx={p.x} cy={p.y} r={4} fill="var(--color-accent)" />
       ))}
-
       {genres.map((g, i) => {
-        const label = pointFor(i, 1.28);
-        const anchor = Math.abs(label.x - RADAR_CENTER) < 4 ? "middle" : label.x > RADAR_CENTER ? "start" : "end";
+        const label = pointFor(i, 1.16);
         return (
           <text
             key={g.genre}
             x={label.x}
             y={label.y}
-            textAnchor={anchor}
+            textAnchor="middle"
             dominantBaseline="middle"
-            fontSize={12}
-            fill="var(--muted-foreground)"
+            className="fill-current font-mono uppercase"
+            style={{ fontSize: 10, letterSpacing: "0.1em" }}
           >
             {g.genre}
           </text>
@@ -98,17 +76,18 @@ function DecadeHeatmap({ decades }: { decades: DecadeCount[] }) {
   const maxCount = Math.max(...decades.map((d) => d.count), 1);
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="space-y-3">
       {decades.map((d) => {
-        const pct = Math.round((d.count / maxCount) * 100);
+        const pct = d.count / maxCount;
         return (
-          <div
-            key={d.decade}
-            className="rounded-xl border border-border px-4 py-3 text-center min-w-[84px]"
-            style={{ backgroundColor: `color-mix(in oklch, var(--primary) ${Math.max(pct, 12)}%, transparent)` }}
-          >
-            <p className="text-sm font-medium">{d.decade}s</p>
-            <p className="text-xs text-muted-foreground">{d.count}</p>
+          <div key={d.decade} className="flex items-center gap-4">
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-16 shrink-0">
+              {d.decade}s
+            </span>
+            <div className="flex-1 h-8 bg-foreground/5">
+              <div className="h-full bg-accent" style={{ width: `${pct * 100}%`, opacity: 0.3 + pct * 0.7 }} />
+            </div>
+            <span className="font-mono text-xs w-8 text-right">{d.count}</span>
           </div>
         );
       })}
@@ -117,25 +96,18 @@ function DecadeHeatmap({ decades }: { decades: DecadeCount[] }) {
 }
 
 function PeopleList({ people }: { people: PersonCount[] }) {
-  const maxCount = Math.max(...people.map((p) => p.count), 1);
-
   return (
-    <ul className="space-y-2">
-      {people.map((p) => (
-        <li key={p.name} className="flex items-center gap-3">
-          <span className="text-sm w-32 shrink-0 truncate" title={p.name}>
-            {p.name}
+    <ol className="space-y-3">
+      {people.map((p, i) => (
+        <li key={p.name} className="flex items-baseline justify-between py-2 border-b border-foreground/5">
+          <span className="flex items-baseline gap-4">
+            <span className="font-mono text-xs text-muted-foreground w-6">{String(i + 1).padStart(2, "0")}</span>
+            <span className="font-medium">{p.name}</span>
           </span>
-          <div className="flex-1 h-2 rounded-full bg-border overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full"
-              style={{ width: `${(p.count / maxCount) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-muted-foreground w-6 text-right">{p.count}</span>
+          <span className="font-mono text-xs text-accent">{p.count} vistas</span>
         </li>
       ))}
-    </ul>
+    </ol>
   );
 }
 
@@ -176,9 +148,7 @@ export default function Profile() {
         if (!cancelled) setProfile(body);
       })
       .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "No pude armar tu perfil de gusto.");
-        }
+        if (!cancelled) setError(err instanceof Error ? err.message : "No pude armar tu perfil de gusto.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -191,8 +161,8 @@ export default function Profile() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -200,131 +170,97 @@ export default function Profile() {
   const hasProfile = profile && profile.matched_count > 0;
 
   return (
-    <PageTransition className="min-h-screen bg-background film-grain">
-      <Navbar />
+    <PageTransition>
+      <main className="max-w-7xl mx-auto px-6 pt-16 pb-24">
+        <header className="pb-10 border-b-2 border-foreground mb-16">
+          {profile && profile.matched_count < profile.total_count && (
+            <div className="flex items-baseline justify-end mb-4">
+              <span className="font-mono text-xs text-muted-foreground">
+                {profile.matched_count} de {profile.total_count} títulos matcheados
+              </span>
+            </div>
+          )}
+          <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9]">
+            Mapa de <span className="text-accent italic font-serif normal-case tracking-normal">afinidad</span>
+          </h1>
+        </header>
 
-      <div className="pt-24 pb-16">
-        <div className="container max-w-5xl">
-          <div className="mb-10">
-            <p className="text-primary text-sm uppercase tracking-widest mb-3 font-medium">
-              Tu archivo
-            </p>
-            <h1
-              className="text-4xl md:text-5xl font-serif mb-4"
-              style={{ fontFamily: "'Instrument Serif', serif" }}
-            >
-              Perfil de <em className="text-gradient not-italic">gusto</em>
-            </h1>
-            <p className="text-muted-foreground leading-relaxed max-w-2xl">
-              Géneros, décadas y nombres que se repiten en lo que ya viste, armado a partir de
-              tu historial cruzado contra TMDb.
-            </p>
+        {loading && (
+          <div className="py-20 text-center">
+            <Loader2 className="w-7 h-7 text-accent animate-spin mx-auto mb-4" />
+            <p className="font-mono text-xs uppercase text-muted-foreground">Cruzando tu historial con TMDb...</p>
           </div>
+        )}
 
-          {loading && (
-            <div className="py-20 text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">Cruzando tu historial con TMDb...</p>
-            </div>
-          )}
+        {!loading && error && (
+          <div className="p-4 border-2 border-destructive/50 font-mono text-xs text-destructive">{error}</div>
+        )}
 
-          {!loading && error && (
-            <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-sm text-destructive">
-              {error}
-            </div>
-          )}
+        {!loading && !error && !hasProfile && (
+          <div className="p-10 border-2 border-dashed border-foreground/20 text-center">
+            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">
+              Todavía no hay suficiente para armar tu perfil
+            </h2>
+            <p className="font-mono text-xs uppercase text-muted-foreground mb-5">
+              Subí tu export de Letterboxd desde la pantalla de recomendaciones.
+            </p>
+            <button
+              onClick={() => navigate("/recommend")}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-mono text-xs uppercase tracking-widest hover:bg-foreground hover:text-background transition-colors"
+            >
+              Ir a recomendar
+            </button>
+          </div>
+        )}
 
-          {!loading && !error && !hasProfile && (
-            <div className="p-8 rounded-2xl border border-border bg-card/40 text-center">
-              <Compass className="w-8 h-8 text-primary mx-auto mb-4" />
-              <h2
-                className="text-2xl font-serif mb-2"
-                style={{ fontFamily: "'Instrument Serif', serif" }}
-              >
-                Todavía no hay suficiente para armar tu perfil
-              </h2>
-              <p className="text-sm text-muted-foreground mb-5">
-                Subí tu export de Letterboxd desde la pantalla de recomendaciones para que
-                podamos cruzarlo con TMDb.
-              </p>
-              <button
-                onClick={() => navigate("/recommend")}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                <Sparkles className="w-4 h-4" />
-                Ir a recomendar
-              </button>
-            </div>
-          )}
-
-          {!loading && !error && hasProfile && profile && (
-            <div className="space-y-8">
-              {profile.matched_count < profile.total_count && (
-                <p className="text-xs text-muted-foreground">
-                  Matcheamos {profile.matched_count} de {profile.total_count} títulos vistos
-                  contra TMDb (priorizando los mejor puntuados).
-                </p>
-              )}
-
+        {!loading && !error && hasProfile && profile && (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 mb-20">
               {profile.genre_breakdown.length > 0 && (
-                <section className="rounded-2xl border border-border bg-card/40 p-6">
-                  <h2
-                    className="text-2xl font-serif mb-1"
-                    style={{ fontFamily: "'Instrument Serif', serif" }}
-                  >
-                    Géneros
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Pesado por cómo puntuaste cada título, no solo por cuántos viste.
-                  </p>
+                <div className="lg:col-span-6">
+                  <div className="flex items-baseline gap-4 mb-8">
+                    <span className="font-mono text-xs px-2 py-1 border border-foreground/20">[Firma de géneros]</span>
+                    <div className="h-px flex-grow bg-foreground/10" />
+                  </div>
                   <GenreRadar genres={profile.genre_breakdown} />
-                </section>
+                </div>
               )}
 
               {profile.decade_breakdown.length > 0 && (
-                <section className="rounded-2xl border border-border bg-card/40 p-6">
-                  <h2
-                    className="text-2xl font-serif mb-1"
-                    style={{ fontFamily: "'Instrument Serif', serif" }}
-                  >
-                    Décadas
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    De qué época son las películas y series que más viste.
-                  </p>
+                <div className="lg:col-span-6">
+                  <div className="flex items-baseline gap-4 mb-8">
+                    <span className="font-mono text-xs px-2 py-1 border border-foreground/20">[Timeline · décadas]</span>
+                    <div className="h-px flex-grow bg-foreground/10" />
+                  </div>
                   <DecadeHeatmap decades={profile.decade_breakdown} />
-                </section>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-16 border-t-2 border-foreground pt-16">
+              {profile.top_directors.length > 0 && (
+                <div>
+                  <div className="flex items-baseline gap-4 mb-8">
+                    <span className="font-mono text-xs px-2 py-1 border border-foreground/20">[Directores]</span>
+                    <div className="h-px flex-grow bg-foreground/10" />
+                  </div>
+                  <PeopleList people={profile.top_directors} />
+                </div>
               )}
 
-              <div className="grid md:grid-cols-2 gap-6">
-                {profile.top_directors.length > 0 && (
-                  <section className="rounded-2xl border border-border bg-card/40 p-6">
-                    <h2
-                      className="text-2xl font-serif mb-4"
-                      style={{ fontFamily: "'Instrument Serif', serif" }}
-                    >
-                      Directores
-                    </h2>
-                    <PeopleList people={profile.top_directors} />
-                  </section>
-                )}
-
-                {profile.top_actors.length > 0 && (
-                  <section className="rounded-2xl border border-border bg-card/40 p-6">
-                    <h2
-                      className="text-2xl font-serif mb-4"
-                      style={{ fontFamily: "'Instrument Serif', serif" }}
-                    >
-                      Actores
-                    </h2>
-                    <PeopleList people={profile.top_actors} />
-                  </section>
-                )}
-              </div>
+              {profile.top_actors.length > 0 && (
+                <div>
+                  <div className="flex items-baseline gap-4 mb-8">
+                    <span className="font-mono text-xs px-2 py-1 border border-foreground/20">[Reparto]</span>
+                    <div className="h-px flex-grow bg-foreground/10" />
+                  </div>
+                  <PeopleList people={profile.top_actors} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+          </>
+        )}
+      </main>
     </PageTransition>
   );
 }

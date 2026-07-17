@@ -2,6 +2,8 @@ import { Toaster } from "sonner";
 import { Route, Switch } from "wouter";
 
 import ErrorBoundary from "./components/ErrorBoundary";
+import { Footer } from "./components/Footer";
+import { Navbar } from "./components/Navbar";
 import { AuthProvider } from "./hooks/useAuth";
 import History from "./pages/History";
 import Home from "./pages/Home";
@@ -28,16 +30,20 @@ export default function App() {
     <ErrorBoundary>
       <AuthProvider>
         <Toaster
-          theme="dark"
           toastOptions={{
             style: {
-              background: "oklch(0.11 0.008 260)",
-              border: "1px solid oklch(0.20 0.01 260)",
-              color: "oklch(0.92 0.015 80)",
+              fontFamily: "var(--font-mono)",
+              borderRadius: 0,
             },
           }}
         />
-        <Router />
+        <div className="min-h-screen flex flex-col bg-background text-foreground">
+          <Navbar />
+          <div className="flex-1">
+            <Router />
+          </div>
+          <Footer />
+        </div>
       </AuthProvider>
     </ErrorBoundary>
   );

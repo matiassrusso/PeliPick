@@ -1,8 +1,7 @@
-import { Loader2, RefreshCw, Sparkles, Star } from "lucide-react";
+import { Film, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
-import { Navbar } from "@/components/Navbar";
 import { PageTransition } from "@/components/PageTransition";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
 
@@ -40,10 +39,7 @@ function formatSessionDate(value: string): string {
   const date = new Date(`${value}Z`);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleString("es-AR", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
+    : date.toLocaleString("es-AR", { dateStyle: "medium", timeStyle: "short" });
 }
 
 // watched_date is a bare date (no time), unlike created_at — formatting it
@@ -58,12 +54,17 @@ function formatWatchedDate(value: string): string {
     : date.toLocaleDateString("es-AR", { dateStyle: "medium", timeZone: "UTC" });
 }
 
+function stars(rating: number): string {
+  return "★".repeat(Math.floor(rating)) + (rating % 1 ? "½" : "");
+}
+
 export default function History() {
   const { isAuthenticated, loading: authLoading, token } = useAuth();
   const [, navigate] = useLocation();
-  const [tab, setTab] = useState<"recommended" | "watched">("recommended");
+  const [tab, setTab] = useState<"recommended" | "watched">("watched");
   const [sessions, setSessions] = useState<RecommendationSession[]>([]);
   const [watchedItems, setWatchedItems] = useState<WatchedItem[]>([]);
+  const [openSession, setOpenSession] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -98,19 +99,17 @@ export default function History() {
           if (tab === "watched") {
             setWatchedItems(body.items ?? []);
           } else {
-            setSessions(body.sessions ?? []);
+            const list: RecommendationSession[] = body.sessions ?? [];
+            setSessions(list);
+            setOpenSession(list[0]?.id ?? null);
           }
         }
       })
       .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "No pude cargar tu historial.");
-        }
+        if (!cancelled) setError(err instanceof Error ? err.message : "No pude cargar tu historial.");
       })
       .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       });
 
     return () => {
@@ -120,232 +119,172 @@ export default function History() {
 
   if (authLoading || !isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
+  const tabCls = (active: boolean) =>
+    `px-6 py-3 font-mono text-xs uppercase tracking-widest border-b-2 transition-colors ${
+      active ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+    }`;
+
   return (
-    <PageTransition className="min-h-screen bg-background film-grain">
-      <Navbar />
-
-      <div className="pt-24 pb-16">
-        <div className="container max-w-6xl">
-          <div className="mb-10">
-            <p className="text-primary text-sm uppercase tracking-widest mb-3 font-medium">
-              Tu archivo
-            </p>
-            <h1
-              className="text-4xl md:text-5xl font-serif mb-4"
-              style={{ fontFamily: "'Instrument Serif', serif" }}
-            >
-              Historial de <em className="text-gradient not-italic">sesiones</em>
-            </h1>
-            <p className="text-muted-foreground leading-relaxed max-w-2xl">
-              Cada tanda de picks que ya generaste queda ac&aacute; para revisitarlas sin volver a
-              subir el zip.
-            </p>
+    <PageTransition>
+      <main className="max-w-7xl mx-auto px-6 pt-16 pb-24">
+        <header className="pb-8 border-b-2 border-foreground mb-8">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-4">
+            [Archive]
           </div>
+          <h1 className="text-6xl md:text-7xl font-black uppercase tracking-tighter leading-[0.9]">
+            Tu <span className="text-accent italic font-serif normal-case tracking-normal">bitácora</span>
+          </h1>
+        </header>
 
-          <div className="flex gap-2 mb-6" role="tablist" aria-label="Historial">
-            {[
-              ["recommended", "Recomendadas"],
-              ["watched", "Vistas"],
-            ].map(([value, label]) => (
-              <button
-                key={value}
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => setTab(value as "recommended" | "watched")}
-                className={`px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
-                  tab === value
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border bg-card/40 text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {loading && (
-            <div className="py-20 text-center">
-              <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground">Cargando tu historial...</p>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-
-          {!loading && !error && tab === "recommended" && sessions.length === 0 && (
-            <div className="p-8 rounded-2xl border border-border bg-card/40 text-center">
-              <Sparkles className="w-8 h-8 text-primary mx-auto mb-4" />
-              <h2
-                className="text-2xl font-serif mb-2"
-                style={{ fontFamily: "'Instrument Serif', serif" }}
-              >
-                Todav&iacute;a no generaste picks
-              </h2>
-              <p className="text-sm text-muted-foreground mb-5">
-                Cuando hagas tu primera sesi&oacute;n de recomendaciones, va a aparecer ac&aacute;.
-              </p>
-              <button
-                onClick={() => navigate("/recommend")}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Ir a recomendar
-              </button>
-            </div>
-          )}
-
-          {!loading && !error && tab === "recommended" && sessions.length > 0 && (
-            <div className="space-y-8">
-              {sessions.map((session) => (
-                <section
-                  key={session.id}
-                  className="rounded-2xl border border-border bg-card/40 overflow-hidden"
-                >
-                  <div className="p-6 border-b border-border bg-card/60">
-                    <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-primary mb-2">
-                          {formatSessionDate(session.created_at)}
-                        </p>
-                        <h2
-                          className="text-2xl font-serif"
-                          style={{ fontFamily: "'Instrument Serif', serif" }}
-                        >
-                          Sesi&oacute;n {session.id}
-                        </h2>
-                      </div>
-                      <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-xs text-primary">
-                        Mood: {session.mood || "sin filtro"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground max-w-3xl">
-                      {session.taste_summary}
-                    </p>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 p-6">
-                    {session.recommendations.map((rec) => (
-                      <article
-                        key={rec.id}
-                        className="rounded-2xl border border-border bg-background/70 overflow-hidden"
-                      >
-                        {rec.backdrop_path && (
-                          <img
-                            src={rec.backdrop_path}
-                            alt={rec.title}
-                            className="w-full h-32 object-cover"
-                          />
-                        )}
-                        <div className="p-4">
-                          <div className="flex items-start justify-between gap-3 mb-2">
-                            <div>
-                              <h3
-                                className="text-xl font-serif leading-tight"
-                                style={{ fontFamily: "'Instrument Serif', serif" }}
-                              >
-                                {rec.title}
-                              </h3>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {rec.year} {rec.kind === "series" ? "· Serie" : ""}
-                              </p>
-                            </div>
-                            <span className="text-xs text-primary whitespace-nowrap">
-                              {rec.match_score}% match
-                            </span>
-                          </div>
-
-                          {rec.vote_average != null && (
-                            <p className="flex items-center gap-1 text-xs text-muted-foreground mb-3">
-                              <Star className="w-3 h-3 fill-primary text-primary" />
-                              {rec.vote_average.toFixed(1)}
-                            </p>
-                          )}
-
-                          <p className="text-sm text-foreground/85 leading-relaxed mb-3">
-                            {rec.why}
-                          </p>
-
-                          {rec.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                              {rec.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="px-2 py-1 rounded-full text-[11px] bg-primary/10 border border-primary/15 text-primary"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
-
-          {!loading && !error && tab === "watched" && watchedItems.length === 0 && (
-            <div className="p-8 rounded-2xl border border-border bg-card/40 text-center">
-              <Star className="w-8 h-8 text-primary mx-auto mb-4" />
-              <h2
-                className="text-2xl font-serif mb-2"
-                style={{ fontFamily: "'Instrument Serif', serif" }}
-              >
-                Todav&iacute;a no importaste vistas
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Sub&iacute; tu export de Letterboxd para verlas ac&aacute;.
-              </p>
-            </div>
-          )}
-
-          {!loading && !error && tab === "watched" && watchedItems.length > 0 && (
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {watchedItems.map((item) => (
-                <article
-                  key={`${item.title}-${item.created_at}`}
-                  className="rounded-2xl border border-border bg-card/40 p-5"
-                >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-primary mb-2">
-                        {item.watched_date
-                          ? formatWatchedDate(item.watched_date)
-                          : formatSessionDate(item.created_at)}
-                      </p>
-                      <h2
-                        className="text-2xl font-serif leading-tight"
-                        style={{ fontFamily: "'Instrument Serif', serif" }}
-                      >
-                        {item.title}
-                      </h2>
-                    </div>
-                    <span className="flex items-center gap-1 text-sm text-primary whitespace-nowrap">
-                      <Star className="w-4 h-4 fill-primary text-primary" />
-                      {item.rating.toFixed(1)}
-                    </span>
-                  </div>
-                  {item.review && (
-                    <p className="text-sm text-muted-foreground leading-relaxed">{item.review}</p>
-                  )}
-                </article>
-              ))}
-            </div>
-          )}
+        <div className="flex gap-0 border-b border-foreground/20 mb-12">
+          <button onClick={() => setTab("watched")} className={tabCls(tab === "watched")}>
+            [Vistas]
+          </button>
+          <button onClick={() => setTab("recommended")} className={tabCls(tab === "recommended")}>
+            [Recomendadas]
+          </button>
         </div>
-      </div>
+
+        {loading && (
+          <div className="py-20 text-center">
+            <Loader2 className="w-7 h-7 text-accent animate-spin mx-auto mb-4" />
+            <p className="font-mono text-xs uppercase text-muted-foreground">Cargando tu historial...</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="p-4 border-2 border-destructive/50 font-mono text-xs text-destructive">{error}</div>
+        )}
+
+        {!loading && !error && tab === "watched" && watchedItems.length === 0 && (
+          <div className="p-10 border-2 border-dashed border-foreground/20 text-center">
+            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">
+              Todavía no importaste vistas
+            </h2>
+            <p className="font-mono text-xs uppercase text-muted-foreground">
+              Subí tu export de Letterboxd para verlas acá.
+            </p>
+          </div>
+        )}
+
+        {!loading && !error && tab === "watched" && watchedItems.length > 0 && (
+          <table className="w-full">
+            <thead>
+              <tr className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-b border-foreground/20">
+                <th className="text-left py-3 w-12">#</th>
+                <th className="text-left py-3">Título</th>
+                <th className="text-left py-3 hidden sm:table-cell">Vista</th>
+                <th className="text-right py-3">Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              {watchedItems.map((item, i) => (
+                <tr key={`${item.title}-${item.created_at}`} className="border-b border-foreground/5 hover:bg-foreground/[0.03]">
+                  <td className="py-4 font-mono text-xs text-muted-foreground">{String(i + 1).padStart(2, "0")}</td>
+                  <td className="py-4">
+                    <div className="font-medium">{item.title}</div>
+                    {item.review && (
+                      <div className="text-xs text-muted-foreground mt-1 line-clamp-1 max-w-md">{item.review}</div>
+                    )}
+                  </td>
+                  <td className="py-4 hidden sm:table-cell font-mono text-xs text-muted-foreground">
+                    {item.watched_date ? formatWatchedDate(item.watched_date) : formatSessionDate(item.created_at)}
+                  </td>
+                  <td className="py-4 text-right font-mono text-sm text-accent">{stars(item.rating)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {!loading && !error && tab === "recommended" && sessions.length === 0 && (
+          <div className="p-10 border-2 border-dashed border-foreground/20 text-center">
+            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Todavía no generaste picks</h2>
+            <p className="font-mono text-xs uppercase text-muted-foreground mb-5">
+              Cuando hagas tu primera sesión de recomendaciones, va a aparecer acá.
+            </p>
+            <button
+              onClick={() => navigate("/recommend")}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-foreground font-mono text-xs uppercase tracking-widest hover:bg-foreground hover:text-background transition-colors"
+            >
+              Ir a recomendar
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && tab === "recommended" && sessions.length > 0 && (
+          <div className="space-y-6">
+            {sessions.map((session) => {
+              const isOpen = openSession === session.id;
+              return (
+                <div key={session.id} className="border-2 border-foreground/10 hover:border-foreground/40 transition-colors">
+                  <button
+                    onClick={() => setOpenSession(isOpen ? null : session.id)}
+                    className="w-full flex flex-wrap items-baseline justify-between gap-4 p-6 text-left"
+                  >
+                    <div className="flex items-baseline gap-6 flex-wrap">
+                      <span className="font-mono text-xs text-accent">[SESIÓN {session.id}]</span>
+                      <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
+                        {formatSessionDate(session.created_at)}
+                      </span>
+                      <span className="text-lg font-medium">{session.mood || "sin filtro"}</span>
+                    </div>
+                    <div className="flex items-baseline gap-4">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {session.recommendations.length} picks
+                      </span>
+                      <span className="font-mono text-xs">{isOpen ? "[−]" : "[+]"}</span>
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <div className="border-t border-foreground/10 p-6 pt-6">
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-6 max-w-3xl">
+                        {session.taste_summary}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                        {session.recommendations.map((rec) => (
+                          <article key={rec.id}>
+                            <div className="mb-4 relative overflow-hidden">
+                              {rec.poster_path ?? rec.backdrop_path ? (
+                                <img
+                                  src={rec.poster_path ?? rec.backdrop_path ?? undefined}
+                                  alt={rec.title}
+                                  className="w-full aspect-[2/3] object-cover"
+                                />
+                              ) : (
+                                <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+                                  <Film className="w-8 h-8 text-muted-foreground/40" />
+                                </div>
+                              )}
+                              <div className="absolute top-2 right-2 px-2 py-1 bg-accent text-accent-foreground font-mono text-xs font-bold">
+                                {rec.match_score}%
+                              </div>
+                            </div>
+                            <h3 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">
+                              {rec.title}
+                            </h3>
+                            <p className="font-mono text-[10px] text-muted-foreground mb-2">
+                              {rec.year}
+                              {rec.kind === "series" ? " · Serie" : ""}
+                            </p>
+                            <p className="font-serif text-sm italic leading-snug">&ldquo;{rec.why}&rdquo;</p>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
     </PageTransition>
   );
 }
