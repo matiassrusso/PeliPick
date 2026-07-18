@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "pelipick.db"
@@ -554,16 +555,22 @@ def save_feedback(user_id: int, recommendation_id: int, status: str) -> None:
 
 
 def save_taste_profile(user_id: int, profile: dict) -> None:
+    # ponytail: computed_at is set explicitly (not left to the column
+    # DEFAULT) because this is an upsert and the DEFAULT only applies on
+    # insert — an update needs a fresh value. datetime('now') is SQLite-only
+    # and used to crash this on Postgres (see git history); compute the same
+    # "YYYY-MM-DD HH:MM:SS" UTC string in Python instead so it works on both.
+    computed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO taste_profiles (user_id, profile_json, computed_at)
-            VALUES (?, ?, datetime('now'))
+            VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
                 profile_json = excluded.profile_json,
                 computed_at = excluded.computed_at
             """,
-            (user_id, json.dumps(profile)),
+            (user_id, json.dumps(profile), computed_at),
         )
 
 

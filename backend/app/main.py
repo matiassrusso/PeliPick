@@ -2,8 +2,9 @@ import logging
 import os
 import sqlite3
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, mailer, taste_profile, tmdb_client
 from .models import (
@@ -68,6 +69,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # ponytail: an exception FastAPI itself doesn't catch (i.e. not an
+    # HTTPException) escapes past CORSMiddleware before it can attach
+    # Access-Control-* headers, so the browser reports "Failed to fetch"
+    # instead of the real 500 — hiding the actual bug behind a network-error
+    # message. Catching it here keeps it inside the CORS layer.
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor."})
 
 
 @app.get("/health")

@@ -181,6 +181,14 @@
   mix-blend-mode: overlay;
   pointer-events: none;
 }
+.dark .grain-layer {
+  /* ponytail: overlay blends black noise toward black on a near-black
+     backdrop, so it nearly disappears in dark mode. Invert the noise to
+     white and switch to screen (its lighten-only counterpart) so the same
+     texture reads at the same strength on both themes. */
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
 
 /* 3D perspective for hero/card elements */
 @utility perspective-scene {
