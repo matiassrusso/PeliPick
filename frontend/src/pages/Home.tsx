@@ -1,8 +1,26 @@
 import { motion, useScroll, useTransform } from "framer-motion";
+import { Film } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
-import { useAuth } from "@/hooks/useAuth";
+import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
+
+type Recommendation = {
+  id: number;
+  title: string;
+  year: number;
+  kind: string;
+  why: string;
+  match_score: number;
+  poster_path: string | null;
+  backdrop_path: string | null;
+};
+
+type RecommendationSession = {
+  id: number;
+  recommendations: Recommendation[];
+};
 
 const STEPS = [
   {
@@ -28,13 +46,37 @@ const MARQUEE_DIRECTORS = [
 ];
 
 export default function Home() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { scrollY } = useScroll();
   const heroY = useTransform(scrollY, [0, 600], [0, -80]);
   const heroOpacity = useTransform(scrollY, [0, 500], [1, 0.3]);
+  const [latestSession, setLatestSession] = useState<RecommendationSession | null>(null);
 
   const ctaHref = isAuthenticated ? "/recommend" : "/login";
   const ctaLabel = isAuthenticated ? "Ir a mis recomendaciones" : "Empezar gratis";
+
+  useEffect(() => {
+    if (!token) {
+      setLatestSession(null);
+      return;
+    }
+
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/history`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body: { sessions: RecommendationSession[] } | null) => {
+        if (!cancelled) setLatestSession(body?.sessions[0] ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setLatestSession(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const currentPicks = latestSession?.recommendations.slice(0, 3) ?? [];
 
   return (
     <PageTransition>
@@ -118,9 +160,52 @@ export default function Home() {
         </div>
       </div>
 
+      {currentPicks.length > 0 && (
+        <section className="max-w-7xl mx-auto px-6 py-24 border-b-2 border-foreground">
+          <div className="flex items-baseline gap-4 mb-10">
+            <span className="font-mono text-xs px-2 py-1 border border-foreground/20">[Current picks]</span>
+            <div className="h-px flex-grow bg-foreground/10" />
+            <Link
+              href="/history"
+              className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Ver todo →
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            {currentPicks.map((rec) => (
+              <article key={rec.id}>
+                <div className="mb-4 relative overflow-hidden">
+                  {rec.poster_path ?? rec.backdrop_path ? (
+                    <img
+                      src={rec.poster_path ?? rec.backdrop_path ?? undefined}
+                      alt={rec.title}
+                      className="w-full aspect-[2/3] object-cover"
+                    />
+                  ) : (
+                    <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+                      <Film className="w-8 h-8 text-muted-foreground/40" />
+                    </div>
+                  )}
+                  <div className="absolute top-2 right-2 px-2 py-1 bg-accent text-accent-foreground font-mono text-xs font-bold">
+                    {rec.match_score}%
+                  </div>
+                </div>
+                <h3 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{rec.title}</h3>
+                <p className="font-mono text-[10px] text-muted-foreground mb-2">
+                  {rec.year}
+                  {rec.kind === "series" ? " · Serie" : ""}
+                </p>
+                <p className="font-serif text-sm italic leading-snug">&ldquo;{rec.why}&rdquo;</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div id="how-it-works" className="max-w-7xl mx-auto px-6">
         {/* Methodology */}
-        <section className="py-24 border-t-2 border-foreground grid grid-cols-1 md:grid-cols-12 gap-12">
+        <section className="py-24 grid grid-cols-1 md:grid-cols-12 gap-12">
           <div className="md:col-span-4">
             <motion.h2
               initial={{ opacity: 0, x: -30 }}
