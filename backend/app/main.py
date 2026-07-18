@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, mailer, taste_profile, tmdb_client
 from .models import (
     AuthResponse,
+    CatalogStatsResponse,
     FeedbackRequest,
     MovieDetails,
     PasswordResetConfirmRequest,
@@ -85,6 +86,17 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/catalog/stats", response_model=CatalogStatsResponse)
+def catalog_stats() -> CatalogStatsResponse:
+    if not tmdb_client.is_configured():
+        raise HTTPException(status_code=503, detail="Catálogo de TMDb no configurado.")
+    try:
+        stats = tmdb_client.fetch_catalog_stats()
+    except tmdb_client.TmdbError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return CatalogStatsResponse(**stats)
 
 
 @app.post("/auth/register", response_model=AuthResponse, status_code=201)

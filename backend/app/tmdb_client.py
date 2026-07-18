@@ -144,6 +144,9 @@ _SEARCH_CACHE: OrderedDict[str, tuple[float, dict | None]] = OrderedDict()
 _TASTE_CREDITS_CACHE: OrderedDict[tuple[str, int], tuple[float, dict]] = OrderedDict()
 _PERSON_CACHE: OrderedDict[str, tuple[float, int | None]] = OrderedDict()
 _PERSONALIZED_CACHE: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
+# single entry, not keyed — there's only one "the catalog" to count
+_CATALOG_STATS_CACHE_TTL_SECONDS = 24 * 60 * 60
+_catalog_stats_cache: tuple[float, dict] | None = None
 
 # ponytail: matches a single discover page's worth of movie candidates; raise
 # if latency allows enriching more per personalized recommend request.
@@ -315,6 +318,35 @@ def fetch_candidates(mood: str, pages: int = 2) -> list[dict]:
         DISCOVER_TV_URL, "series", TV_GENRE_ID_TAG_MAP, MOOD_TV_GENRE_ID_MAP, mood, api_key, pages
     )
     return movies + series
+
+
+def fetch_catalog_stats() -> dict:
+    """Real counts from the same TMDb pool recommendations are drawn from
+    (vote_count.gte 200, matching _fetch_from_discover), not the raw TMDb
+    total which is inflated by obscure/duplicate entries. Cached a day —
+    this backs a footer decoration, not something that needs to be live."""
+    global _catalog_stats_cache
+    if _catalog_stats_cache is not None:
+        expires_at, cached = _catalog_stats_cache
+        if expires_at > _now_monotonic():
+            return cached
+
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    def _total_results(url: str) -> int:
+        params = {"api_key": api_key, "vote_count.gte": 200, "include_adult": "false"}
+        data = _get_json(f"{url}?{urllib.parse.urlencode(params)}")
+        return int(data.get("total_results", 0))
+
+    stats = {
+        "movies": _total_results(DISCOVER_URL),
+        "series": _total_results(DISCOVER_TV_URL),
+        "genres": len(set(GENRE_ID_TAG_MAP) | set(TV_GENRE_ID_TAG_MAP)),
+    }
+    _catalog_stats_cache = (_now_monotonic() + _CATALOG_STATS_CACHE_TTL_SECONDS, stats)
+    return stats
 
 
 def _tmdb_endpoint_kind(kind: str) -> str:

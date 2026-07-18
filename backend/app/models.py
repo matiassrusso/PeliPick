@@ -16,6 +16,12 @@ class RecommendRequest(BaseModel):
     ratings: list[RatedItem] = Field(default_factory=list)
 
 
+class CatalogStatsResponse(BaseModel):
+    movies: int
+    series: int
+    genres: int
+
+
 class Recommendation(BaseModel):
     id: int | None = None
     tmdb_id: int | None = None
