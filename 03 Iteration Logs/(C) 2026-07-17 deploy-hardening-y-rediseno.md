@@ -103,10 +103,19 @@
   sin timestamp/módulo, nada de INFO). Ahora estructurado, más un log INFO
   por cada `/recommend/*` completado (user, mode, kind_filter, personalized,
   llm, picks, discarded_rows). Verificado en vivo, log real capturado.
-- Envío real de mail para recuperación de contraseña (hoy el token no llega al usuario
-  sin `PELIPICK_DEBUG=1`). **Sigue pendiente** — necesita que Matías elija
-  proveedor (Resend vs Gmail SMTP) y cree la cuenta/API key él mismo antes de
-  que se pueda implementar; quedó preguntado, sin responder por corte de sesión.
+- ~~Envío real de mail para recuperación de contraseña.~~ **Código hecho**
+  (misma sesión, más tarde, con Resend elegido): columna `email` en `users`
+  (migración incluida), registro pide email (`RegisterRequest`),
+  `backend/app/mailer.py` nuevo (mismo patrón stdlib `urllib` que
+  `llm_client.py`, sin dependencia nueva) manda vía Resend si
+  `RESEND_API_KEY` está seteada, degrade gracioso si no. Frontend: campo
+  email en registro, flujo "¿Olvidaste tu contraseña?" en `Login.tsx`,
+  página nueva `ResetPassword.tsx`. Verificado end-to-end en local con
+  `PELIPICK_DEBUG=1` (registro → forgot → reset con token real → login con
+  la contraseña nueva). 158 tests en verde. **Sigue pendiente de Matías:**
+  crear la cuenta de Resend, setear `RESEND_API_KEY`, y conseguir un dominio
+  propio verificado (sin eso Resend solo manda al mail de la cuenta dueña de
+  la key, no a usuarios reales).
 
 ### Features planeadas pero shelved
 - **Affinity Map** (mapa espacial de afinidades por co-ocurrencia, en reemplazo del

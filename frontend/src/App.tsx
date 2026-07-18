@@ -11,12 +11,14 @@ import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Recommend from "./pages/Recommend";
+import ResetPassword from "./pages/ResetPassword";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route path="/recommend" component={Recommend} />
       <Route path="/history" component={History} />
       <Route path="/profile" component={Profile} />

@@ -7,7 +7,8 @@ client = TestClient(app)
 
 def test_register_creates_user_and_returns_token() -> None:
     response = client.post(
-        "/auth/register", json={"username": "mati", "password": "supersecret"}
+        "/auth/register",
+        json={"username": "mati", "password": "supersecret", "email": "mati@example.com"},
     )
 
     assert response.status_code == 201
@@ -16,17 +17,33 @@ def test_register_creates_user_and_returns_token() -> None:
     assert body["token"]
 
 
-def test_register_rejects_duplicate_username() -> None:
-    client.post("/auth/register", json={"username": "dupe", "password": "supersecret"})
+def test_register_rejects_malformed_email() -> None:
     response = client.post(
-        "/auth/register", json={"username": "dupe", "password": "othersecret"}
+        "/auth/register",
+        json={"username": "bademail", "password": "supersecret", "email": "not-an-email"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_register_rejects_duplicate_username() -> None:
+    client.post(
+        "/auth/register",
+        json={"username": "dupe", "password": "supersecret", "email": "dupe@example.com"},
+    )
+    response = client.post(
+        "/auth/register",
+        json={"username": "dupe", "password": "othersecret", "email": "dupe2@example.com"},
     )
 
     assert response.status_code == 409
 
 
 def test_login_succeeds_with_correct_password() -> None:
-    client.post("/auth/register", json={"username": "loginok", "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": "loginok", "password": "supersecret", "email": "loginok@example.com"},
+    )
     response = client.post(
         "/auth/login", json={"username": "loginok", "password": "supersecret"}
     )
@@ -36,7 +53,10 @@ def test_login_succeeds_with_correct_password() -> None:
 
 
 def test_login_rejects_wrong_password() -> None:
-    client.post("/auth/register", json={"username": "loginbad", "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": "loginbad", "password": "supersecret", "email": "loginbad@example.com"},
+    )
     response = client.post(
         "/auth/login", json={"username": "loginbad", "password": "wrongpassword"}
     )
@@ -54,7 +74,8 @@ def test_login_rejects_unknown_username() -> None:
 
 def test_login_rate_limits_after_repeated_failures(monkeypatch) -> None:
     client.post(
-        "/auth/register", json={"username": "ratelimit", "password": "supersecret"}
+        "/auth/register",
+        json={"username": "ratelimit", "password": "supersecret", "email": "ratelimit@example.com"},
     )
     monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 1_000)
 
@@ -100,7 +121,10 @@ def test_recommend_zip_requires_auth() -> None:
 
 
 def test_auth_me_returns_username_for_valid_token() -> None:
-    client.post("/auth/register", json={"username": "meuser", "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": "meuser", "password": "supersecret", "email": "meuser@example.com"},
+    )
     login = client.post("/auth/login", json={"username": "meuser", "password": "supersecret"})
     token = login.json()["token"]
 
@@ -124,7 +148,8 @@ def test_forgot_password_returns_token_and_reset_invalidates_old_sessions(monkey
     monkeypatch.setenv("PELIPICK_DEBUG", "1")
 
     register = client.post(
-        "/auth/register", json={"username": "resetuser", "password": "supersecret"}
+        "/auth/register",
+        json={"username": "resetuser", "password": "supersecret", "email": "resetuser@example.com"},
     )
     old_token = register.json()["token"]
 
@@ -157,6 +182,48 @@ def test_forgot_password_returns_token_and_reset_invalidates_old_sessions(monkey
     )
 
 
+def test_forgot_password_sends_email_when_mailer_configured(monkeypatch) -> None:
+    client.post(
+        "/auth/register",
+        json={"username": "mailuser", "password": "supersecret", "email": "mailuser@example.com"},
+    )
+
+    sent = {}
+
+    def fake_send(to_email: str, reset_token: str) -> None:
+        sent["to_email"] = to_email
+        sent["reset_token"] = reset_token
+
+    monkeypatch.setattr("backend.app.main.mailer.is_configured", lambda: True)
+    monkeypatch.setattr("backend.app.main.mailer.send_password_reset_email", fake_send)
+
+    response = client.post("/auth/forgot-password", json={"username": "mailuser"})
+
+    assert response.status_code == 200
+    assert sent["to_email"] == "mailuser@example.com"
+    assert sent["reset_token"]
+
+
+def test_forgot_password_survives_mailer_failure(monkeypatch) -> None:
+    client.post(
+        "/auth/register",
+        json={"username": "mailfail", "password": "supersecret", "email": "mailfail@example.com"},
+    )
+
+    from backend.app.mailer import MailError
+
+    def fake_send(to_email: str, reset_token: str) -> None:
+        raise MailError("resend is down")
+
+    monkeypatch.setattr("backend.app.main.mailer.is_configured", lambda: True)
+    monkeypatch.setattr("backend.app.main.mailer.send_password_reset_email", fake_send)
+
+    response = client.post("/auth/forgot-password", json={"username": "mailfail"})
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "reset_token": None}
+
+
 def test_forgot_password_is_generic_for_unknown_username() -> None:
     response = client.post("/auth/forgot-password", json={"username": "ghost"})
 
@@ -167,7 +234,10 @@ def test_forgot_password_is_generic_for_unknown_username() -> None:
 def test_forgot_password_hides_token_by_default_even_for_existing_user() -> None:
     # PELIPICK_DEBUG is unset here (conftest clears it) — this is the real
     # default behavior: no token in the response, existing user or not.
-    client.post("/auth/register", json={"username": "notexposed", "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": "notexposed", "password": "supersecret", "email": "notexposed@example.com"},
+    )
 
     response = client.post("/auth/forgot-password", json={"username": "notexposed"})
 
@@ -177,7 +247,10 @@ def test_forgot_password_hides_token_by_default_even_for_existing_user() -> None
 
 def test_reset_password_rejects_expired_token(monkeypatch) -> None:
     monkeypatch.setenv("PELIPICK_DEBUG", "1")
-    client.post("/auth/register", json={"username": "expired", "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": "expired", "password": "supersecret", "email": "expired@example.com"},
+    )
     monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 2_000)
     reset_token = client.post(
         "/auth/forgot-password", json={"username": "expired"}

@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, taste_profile, tmdb_client
+from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, mailer, taste_profile, tmdb_client
 from .models import (
     AuthResponse,
     FeedbackRequest,
@@ -17,6 +17,7 @@ from .models import (
     PasswordResetStartResponse,
     RecommendRequest,
     RecommendResponse,
+    RegisterRequest,
     TasteProfileResponse,
     UserCredentials,
     WatchedHistoryResponse,
@@ -75,12 +76,12 @@ def health() -> dict[str, str]:
 
 
 @app.post("/auth/register", response_model=AuthResponse, status_code=201)
-def register(payload: UserCredentials) -> AuthResponse:
+def register(payload: RegisterRequest) -> AuthResponse:
     if db.get_user_by_username(payload.username) is not None:
         raise HTTPException(status_code=409, detail="Ese usuario ya existe.")
 
     password_hash, password_salt = auth.hash_password(payload.password)
-    user_id = db.create_user(payload.username, password_hash, password_salt)
+    user_id = db.create_user(payload.username, password_hash, password_salt, payload.email)
     token = auth.create_token()
     db.create_session(token, user_id)
     return AuthResponse(token=token, username=payload.username)
@@ -126,6 +127,13 @@ def forgot_password(payload: PasswordResetRequest) -> PasswordResetStartResponse
     token, token_hash = auth.create_password_reset_token()
     expires_at = auth.now_ts() + auth.RESET_TOKEN_TTL_SECONDS
     db.save_password_reset_token(user["id"], token_hash, expires_at)
+
+    if mailer.is_configured() and user["email"]:
+        try:
+            mailer.send_password_reset_email(user["email"], token)
+        except mailer.MailError as exc:
+            logger.warning("Password reset email failed to send: %s", exc)
+
     exposed_token = token if _debug_mode() else None
     return PasswordResetStartResponse(status="ok", reset_token=exposed_token)
 

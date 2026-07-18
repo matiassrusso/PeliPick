@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
+    email TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
+    email TEXT,
     created_at TEXT NOT NULL DEFAULT ({_PG_NOW})
 );
 
@@ -244,6 +246,8 @@ def _run_migrations(conn) -> None:
         conn.execute("ALTER TABLE recommendations_served ADD COLUMN tmdb_id INTEGER")
     if not _has_column(conn, "rated_items", "watched_date"):
         conn.execute("ALTER TABLE rated_items ADD COLUMN watched_date TEXT NOT NULL DEFAULT ''")
+    if not _has_column(conn, "users", "email"):
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
 
 
 def _last_insert_id(conn, cursor):
@@ -278,12 +282,12 @@ def get_connection():
         conn.close()
 
 
-def create_user(username: str, password_hash: str, password_salt: str) -> int:
+def create_user(username: str, password_hash: str, password_salt: str, email: str) -> int:
     with get_connection() as conn:
         cursor = conn.execute(
-            "INSERT INTO users (username, password_hash, password_salt) VALUES (?, ?, ?)"
+            "INSERT INTO users (username, password_hash, password_salt, email) VALUES (?, ?, ?, ?)"
             + (" RETURNING id" if _is_postgres() else ""),
-            (username, password_hash, password_salt),
+            (username, password_hash, password_salt, email),
         )
         return _last_insert_id(conn, cursor)
 

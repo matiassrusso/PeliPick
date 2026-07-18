@@ -26,8 +26,26 @@
 - rate limiting de login (backoff exponencial por username, tope 15 min) y
   recuperación de contraseña (token hasheado en SQLite, expira a la hora,
   invalida sesiones viejas al resetear) — el token solo viaja en la
-  respuesta con `PELIPICK_DEBUG=1`, nunca por default (no hay proveedor de
-  mail todavía)
+  respuesta con `PELIPICK_DEBUG=1`, salvo con Resend configurado (ver abajo)
+- envío real del mail de recuperación vía Resend: `users` suma columna
+  `email` (nullable, migración vía `_run_migrations` en `backend/app/db.py`
+  para instalaciones existentes), registro pasa a pedir email
+  (`RegisterRequest`, validado con un regex simple — no se suma
+  `email-validator` para no meter una dependencia nueva por una validación de
+  forma). `backend/app/mailer.py` (mismo patrón stdlib `urllib` que
+  `llm_client.py`/`tmdb_client.py`, sin dependencia nueva) manda el mail vía
+  la API REST de Resend si `RESEND_API_KEY` está seteada; si no, se
+  comporta exactamente como antes (degrade gracioso, mismo patrón que
+  TMDb/Gemini). Frontend suma el campo email al registro, un flujo "¿Olvidaste
+  tu contraseña?" en `Login.tsx`, y la página `ResetPassword.tsx` que
+  consume el link del mail. Verificado end-to-end en local con
+  `PELIPICK_DEBUG=1` (sin Resend real configurado todavía): registro con
+  email → forgot-password → reset con el token real → login con la
+  contraseña nueva. **Pendiente de Matías:** crear la cuenta en Resend y
+  setear `RESEND_API_KEY` (local y en Render) — sin dominio propio
+  verificado, Resend solo deja mandar al mail de la cuenta dueña de la key,
+  así que además hace falta un dominio real para que llegue a usuarios
+  reales (no solo a vos)
 - caché en memoria de resultados de TMDb (`/discover/movie` y
   `/discover/tv`, TTL de 5 min, tope de 32 entradas)
 - historial revisitables de sesiones: cada request de `/recommend/zip` queda
@@ -197,9 +215,10 @@
   visibilidad de uso real, no solo de errores
 
 ## Falta para un MVP más serio
-- envío real de mail para recuperación de contraseña (hoy el token nunca
-  sale de la respuesta salvo con `PELIPICK_DEBUG=1`, así que el flujo
-  funciona pero no hay forma real de que el usuario lo reciba)
+- terminar de activar el envío real de mail (ver más arriba): falta que
+  Matías cree la cuenta de Resend, setee `RESEND_API_KEY`, y consiga un
+  dominio propio verificado para que el mail le llegue a usuarios reales
+  (no solo a la cuenta dueña de la key)
 
 ## No entra todavía
 

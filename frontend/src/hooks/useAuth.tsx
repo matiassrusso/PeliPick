@@ -19,7 +19,7 @@ type AuthState = {
   error: Error | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, email: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -65,26 +65,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [token]);
 
-  const authenticate = useCallback(async (endpoint: "login" | "register", username: string, password: string) => {
-    setError(null);
-    const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
+  const authenticate = useCallback(
+    async (endpoint: "login" | "register", username: string, password: string, email?: string) => {
+      setError(null);
+      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(email ? { username, password, email } : { username, password }),
+      });
 
-    const body = await response.json().catch(() => null);
-    if (!response.ok) {
-      const message = body?.detail ?? "No pude autenticarte.";
-      const err = new Error(message);
-      setError(err);
-      throw err;
-    }
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = body?.detail ?? "No pude autenticarte.";
+        const err = new Error(message);
+        setError(err);
+        throw err;
+      }
 
-    localStorage.setItem(TOKEN_KEY, body.token);
-    setUser({ username: body.username });
-    setToken(body.token);
-  }, []);
+      localStorage.setItem(TOKEN_KEY, body.token);
+      setUser({ username: body.username });
+      setToken(body.token);
+    },
+    [],
+  );
 
   const login = useCallback(
     (username: string, password: string) => authenticate("login", username, password),
@@ -92,7 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    (username: string, password: string) => authenticate("register", username, password),
+    (username: string, password: string, email: string) =>
+      authenticate("register", username, password, email),
     [authenticate],
   );
 

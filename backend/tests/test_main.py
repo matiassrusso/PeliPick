@@ -23,7 +23,10 @@ def _zip_bytes(files: dict[str, str]) -> bytes:
 
 
 def _auth_headers(username: str) -> dict[str, str]:
-    client.post("/auth/register", json={"username": username, "password": "supersecret"})
+    client.post(
+        "/auth/register",
+        json={"username": username, "password": "supersecret", "email": f"{username}@example.com"},
+    )
     login = client.post("/auth/login", json={"username": username, "password": "supersecret"})
     return {"Authorization": f"Bearer {login.json()['token']}"}
 

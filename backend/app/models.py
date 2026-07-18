@@ -66,6 +66,15 @@ class UserCredentials(BaseModel):
     password: str = Field(min_length=8, max_length=200)
 
 
+# basic shape check, not full RFC 5322 — good enough to catch typos without
+# adding a dependency (pydantic's EmailStr needs the extra email-validator package)
+EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class RegisterRequest(UserCredentials):
+    email: str = Field(pattern=EMAIL_PATTERN, max_length=200)
+
+
 class AuthResponse(BaseModel):
     token: str
     username: str
