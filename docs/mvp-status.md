@@ -174,6 +174,18 @@
   redeploy, así que `backend/app/db.py` ahora soporta los dos backends por
   `DATABASE_URL` (sin setear sigue usando SQLite igual que siempre, para dev
   local y tests); en Render se setea a mano con el connection string de Neon
+- current picks en el home (última sesión de recomendaciones real del
+  usuario logueado) y catalog statistics reales en el footer (`GET
+  /catalog/stats`, del mismo pool de TMDb del que salen las
+  recomendaciones) — ver `docs/build-log.md` 2026-07-18
+- fix de mapa de afinidad roto en producción (`datetime()` de SQLite no
+  existe en Postgres) + exception handler global para que un 500 no
+  manejado no se disfrace de "Failed to fetch" en el browser
+- performance: pool de conexiones a Postgres (antes se recreaba el schema
+  entero en cada request — login bajó de ~8s a ~0.6s) y paralelización con
+  `ThreadPoolExecutor` de las llamadas a TMDb en el perfil de gusto (antes
+  secuenciales, ~200 requests uno por uno — un import de 45 títulos nuevos
+  bajó de ~100s+ a ~11.6s) — ver `docs/build-log.md` 2026-07-18
 
 ## Hecho pero verde
 

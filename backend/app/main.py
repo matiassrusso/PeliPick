@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -243,11 +244,21 @@ def _enrich_loved_ratings_with_genre_tags(ratings: list[RatedItem]) -> None:
     if not tmdb_client.is_configured():
         return
     loved = sorted((r for r in ratings if r.rating >= 4), key=lambda r: r.rating, reverse=True)
-    for item in loved[:TASTE_TAG_LOOKUP_CAP]:
+    loved = loved[:TASTE_TAG_LOOKUP_CAP]
+    if not loved:
+        return
+
+    def _match(item: RatedItem) -> tuple[RatedItem, dict | None]:
         try:
-            match = tmdb_client.search_title(item.title)
+            return item, tmdb_client.search_title(item.title)
         except tmdb_client.TmdbError:
-            continue
+            return item, None
+
+    # blocking network calls, not CPU work — a thread pool gets real
+    # concurrency here despite the GIL (see taste_profile.MATCH_WORKERS)
+    with ThreadPoolExecutor(max_workers=taste_profile.MATCH_WORKERS) as pool:
+        results = pool.map(_match, loved)
+    for item, match in results:
         if match:
             item.tags = list(item.tags) + match["tags"]
 

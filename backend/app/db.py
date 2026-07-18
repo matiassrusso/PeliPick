@@ -222,10 +222,6 @@ class _PostgresConnWrapper:
     def commit(self):
         self._conn.commit()
 
-    def close(self):
-        self._cursor.close()
-        self._conn.close()
-
 
 def _has_column(conn, table: str, column: str) -> bool:
     if _is_postgres():
@@ -260,27 +256,71 @@ def _last_insert_id(conn, cursor):
     return cursor.lastrowid
 
 
+_PG_POOL = None  # psycopg2.pool.ThreadedConnectionPool, created lazily on first use
+
+# ponytail: keyed by target (db path, or the Postgres URL) rather than a
+# bare bool — tests point PELIPICK_DB_PATH at a fresh tmp file per test, so a
+# single global flag would skip schema creation for every db after the first.
+# Harmless if two threads race this at cold start: CREATE TABLE IF NOT EXISTS
+# is idempotent, worst case is redundant work once, not a correctness bug.
+_initialized_targets: set[str] = set()
+
+
+def _get_pg_pool():
+    global _PG_POOL
+    if _PG_POOL is None:
+        from psycopg2.pool import ThreadedConnectionPool
+
+        _PG_POOL = ThreadedConnectionPool(1, 10, _database_url())
+    return _PG_POOL
+
+
+def _ensure_schema_ready(conn) -> None:
+    target = _database_url() or _db_path()
+    if target in _initialized_targets:
+        return
+    conn.executescript(SCHEMA_POSTGRES if _is_postgres() else SCHEMA_SQLITE)
+    _run_migrations(conn)
+    conn.commit()
+    _initialized_targets.add(target)
+
+
 @contextmanager
 def get_connection():
-    database_url = _database_url()
-    if database_url:
-        import psycopg2
+    # ponytail: this used to run executescript()+_run_migrations() on every
+    # single call — each round trip crosses Render <-> Neon's cross-region
+    # link (~400-500ms), so a connection alone used to cost ~3s before any
+    # actual query ran, which is most of why login and every other
+    # DB-touching request felt slow. _ensure_schema_ready now only pays that
+    # cost once per process. Postgres also reuses a pooled connection instead
+    # of a fresh TCP+TLS handshake per request.
+    if _is_postgres():
         from psycopg2.extras import RealDictCursor
 
-        pg_conn = psycopg2.connect(database_url, cursor_factory=RealDictCursor)
+        pool = _get_pg_pool()
+        pg_conn = pool.getconn()
+        pg_conn.cursor_factory = RealDictCursor
         conn = _PostgresConnWrapper(pg_conn)
-        conn.executescript(SCHEMA_POSTGRES)
+        _ensure_schema_ready(conn)
+        try:
+            yield conn
+            pg_conn.commit()
+        except Exception:
+            pg_conn.rollback()
+            raise
+        finally:
+            conn._cursor.close()
+            pool.putconn(pg_conn)
     else:
         conn = sqlite3.connect(_db_path())
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.executescript(SCHEMA_SQLITE)
-    _run_migrations(conn)
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+        _ensure_schema_ready(conn)
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def create_user(username: str, password_hash: str, password_salt: str, email: str) -> int:

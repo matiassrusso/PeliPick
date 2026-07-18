@@ -1,5 +1,109 @@
 # Build Log
 
+## 2026-07-18 (comparación con Lovable, fixes de producción, performance)
+
+### Dark mode: grain layer se aplastaba a negro
+
+El fondo con textura granulada del hero (`grain-layer` en `index.css`) se
+veía bien en modo claro pero prácticamente invisible en oscuro. Causa:
+`mix-blend-mode: overlay` con ruido negro sobre un fondo casi negro da
+`2*base*blend ≈ 0` — el overlay funde el ruido con el fondo en vez de
+resaltarlo. Fix: en `.dark .grain-layer` se invierte el ruido a blanco
+(`filter: invert(1)`) y se cambia a `mix-blend-mode: screen` (el
+equivalente que aclara en vez de oscurecer), para que la textura se lea con
+la misma intensidad en los dos temas.
+
+### Comparación con el prototipo de Lovable (`pixel-perfect-clone-61381`)
+
+Se navegó el prototipo visual hecho en Lovable (datos mock, sin backend
+real) para identificar diferencias que valía la pena portar al proyecto
+real:
+
+1. **Current picks en el home** — integrado usando la sesión de
+   recomendaciones más reciente del usuario vía `GET /history` (no datos
+   de relleno): 3 picks con poster, badge de `match_score`, título/año y el
+   "why", reusando el patrón de tarjeta que ya existía en `History.tsx`.
+   Solo se muestra si el usuario está logueado y ya tiene al menos una
+   sesión — para el resto, la sección no aparece.
+2. **Catalog statistics en el footer** — los números de Lovable (42.8k
+   películas, 1.2k directores, 250+ géneros) eran inventados para el
+   prototipo estático. Se optó por traer datos reales: nuevo endpoint
+   `GET /catalog/stats` en `tmdb_client.py`/`main.py` que cuenta
+   películas/series del mismo pool de TMDb del que salen las
+   recomendaciones (`vote_count.gte=200`, igual que `fetch_candidates`) y
+   géneros (unión de los ids de género de película+TV ya mapeados en el
+   cliente), cacheado 24hs. Números reales en prod: ~15K películas, ~2.5K
+   series, 27 géneros.
+3. **Mapa de afinidad roto en producción** — reportado como "Failed to
+   fetch" en `/profile/taste`. Causa raíz: `save_taste_profile`
+   (`db.py`) usaba `datetime('now')`, función de SQLite que no existe en
+   Postgres (Neon en Render) — cada perfil nuevo tiraba una excepción no
+   manejada. Como esa excepción escapaba el middleware de CORS antes de
+   poder adjuntar los headers `Access-Control-*`, el browser la reportaba
+   como fallo de red en vez de mostrar el 500 real, lo que hizo el
+   diagnóstico bastante más largo de lo que hubiera sido con un error
+   claro. Fix: el timestamp se calcula en Python (mismo formato
+   `YYYY-MM-DD HH:MM:SS` UTC que ya usan el resto de las tablas vía
+   `_PG_NOW`) en vez de un literal SQL específico de un solo motor. Se
+   sumó además un exception handler global (`@app.exception_handler(Exception)`)
+   para que cualquier futuro 500 no manejado mantenga los headers CORS —
+   que el error real llegue al frontend en vez de disfrazarse de "Failed
+   to fetch".
+
+Verificado en vivo contra producción (Render + Neon) reproduciendo el bug
+con curl antes del fix y confirmando el 200 después del redeploy.
+
+### Performance: por qué todo se sentía lento
+
+A pedido explícito de Matías ("que no tarde en loguearse, que elija las
+películas más rápido"), se perfiló en vivo contra el backend de
+producción y se encontraron dos cuellos de botella reales, no percepción:
+
+1. **Cada llamada a `db.get_connection()` recreaba el schema entero y
+   corría las migraciones**, además de abrir una conexión nueva por
+   request sin pool — y cada round trip cruza la región de Render a la
+   de Neon (São Paulo), ~400-500ms por viaje. Un login hacía 2-3 de estas
+   conexiones. Medido con curl contra producción: **login pasó de ~8s a
+   ~0.6s** después del fix. Cambio en `db.py`: `ThreadedConnectionPool`
+   de `psycopg2` (ya era una dependencia, sin sumar nada nuevo) creado una
+   sola vez, y el schema/migraciones ahora corren una única vez por
+   proceso (guardado por target — db path para SQLite, URL para
+   Postgres — no un bool global, para no romper el aislamiento de tests
+   que apuntan cada uno a su propio archivo temporal).
+2. **`build_taste_profile` y `_enrich_loved_ratings_with_genre_tags`
+   hacían hasta ~200 llamadas secuenciales a TMDb** (una película a la
+   vez, cada una ~0.9s desde acá). Paralelizado con
+   `concurrent.futures.ThreadPoolExecutor` (10 workers, stdlib, sin
+   dependencia nueva) — son llamadas de red bloqueantes, no cómputo, así
+   que un thread pool da concurrencia real pese al GIL. Con un import de
+   45 películas nuevas (peor caso, nada cacheado): de lo que hubiera sido
+   ~100s+ secuencial a **~11.6s** medido en vivo. De paso se corrigió una
+   condición de carrera latente en las 5 cachés en memoria de
+   `tmdb_client.py` (`del cache[key]` → `cache.pop(key, None)`): con
+   acceso concurrente, dos threads pueden evaluar la misma entrada vencida
+   al mismo tiempo, y el segundo `del` tiraba `KeyError` al intentar
+   borrar algo que el primero ya había borrado.
+
+Verificado: 158 tests en verde, timing medido con curl antes/después
+contra Neon real (incluyendo una prueba de carga concurrente de 8
+requests simultáneos al pool, sin errores), y contra el backend de
+producción para el fix de conexión.
+
+### Limpieza
+
+Se registraron y luego borraron (en cascada, todas las tablas
+relacionadas) varias cuentas de prueba usadas para reproducir bugs y medir
+performance, tanto en el SQLite local como en el Postgres de producción
+(Neon) — nada de esto quedó en ninguna de las dos bases.
+
+### Pendiente
+
+- pushear el fix de performance (conexiones + paralelización TMDb) — se
+  hace en este mismo commit
+- sigue pendiente de antes: Matías tiene que crear la cuenta de Resend y
+  setear `RESEND_API_KEY` en Render para que el mail de recuperación de
+  contraseña funcione con usuarios reales (no solo en debug)
+
 ## 2026-07-11 (flujo multi-agente: TASKS.md, Codex, review, merge)
 
 ### Qué se armó

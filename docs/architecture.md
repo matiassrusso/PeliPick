@@ -79,7 +79,7 @@ Piezas actuales:
 - [backend/app/letterboxd_zip.py](../backend/app/letterboxd_zip.py): abre el zip del export, combina ratings/reviews/diary/likes/watched/profile
 - [backend/app/recommender.py](../backend/app/recommender.py): resumen y ranking heurístico
 - [backend/app/catalog.py](../backend/app/catalog.py): catálogo mock
-- [backend/app/db.py](../backend/app/db.py): SQLite (stdlib `sqlite3`, sin ORM), schema e inserts/queries
+- [backend/app/db.py](../backend/app/db.py): SQLite (stdlib `sqlite3`, sin ORM) en dev/tests, Postgres (Neon) en producción vía `DATABASE_URL`, schema e inserts/queries
 - [backend/app/auth.py](../backend/app/auth.py): hashing de password (PBKDF2, stdlib) y dependencia de sesión
 - [backend/app/tmdb_client.py](../backend/app/tmdb_client.py): cliente TMDb (stdlib `urllib`), mapea género + overview a tags propios
 - [backend/app/llm_client.py](../backend/app/llm_client.py): cliente NVIDIA NIM (stdlib `urllib`), refina resumen y picks del heurístico
@@ -131,6 +131,19 @@ Piezas actuales:
   request de `/recommend/zip`, en vez de reconstruir sesiones por timestamp
   desde `recommendations_served` (más corto de implementar, pero frágil si dos
   requests caen en el mismo segundo)
+- `ThreadedConnectionPool` de `psycopg2` para Postgres (ya era dependencia,
+  sin sumar nada) en vez de abrir una conexión nueva por request: cada
+  round trip Render↔Neon cruza región (~400-500ms), y antes cada
+  `get_connection()` además recreaba el schema completo y corría las
+  migraciones — login llegó a tardar ~8s por esto solo. El schema/
+  migraciones ahora se corren una única vez por proceso, guardado por
+  target (db path o URL) en vez de un bool global, para que los tests
+  (que apuntan cada uno a su propio SQLite temporal) sigan aislados
+- `concurrent.futures.ThreadPoolExecutor` (stdlib) para las búsquedas de
+  TMDb en `build_taste_profile`/`_enrich_loved_ratings_with_genre_tags` en
+  vez de un loop secuencial: son llamadas de red bloqueantes, así que un
+  thread pool da concurrencia real pese al GIL, sin sumar `asyncio`/
+  `httpx` al cliente de TMDb existente
 
 ## Limitaciones actuales
 

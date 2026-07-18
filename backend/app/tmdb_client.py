@@ -241,7 +241,10 @@ def _get_cached_discover_page(cache_key: tuple[str, str, int]) -> list[dict] | N
 
     expires_at, items = cached
     if expires_at <= _now_monotonic():
-        del _DISCOVER_CACHE[cache_key]
+        # .pop(..., None) not del: build_taste_profile fetches candidates
+        # concurrently now, so another thread may have already evicted this
+        # same expired key between the .get() above and here.
+        _DISCOVER_CACHE.pop(cache_key, None)
         return None
 
     _DISCOVER_CACHE.move_to_end(cache_key)
@@ -450,7 +453,10 @@ def search_title(title: str) -> dict | None:
         if expires_at > _now_monotonic():
             _SEARCH_CACHE.move_to_end(cache_key)
             return result.copy() if result else None
-        del _SEARCH_CACHE[cache_key]
+        # .pop(..., None) not del: this runs concurrently across threads
+        # (build_taste_profile matches titles in parallel), so another
+        # thread may have already evicted this same expired key.
+        _SEARCH_CACHE.pop(cache_key, None)
 
     result = _search_one(SEARCH_URL, "movie", GENRE_ID_NAME_MAP, GENRE_ID_TAG_MAP, title, api_key)
     if result is None:
@@ -479,7 +485,9 @@ def fetch_taste_credits(tmdb_id: int, kind: str = "movie") -> dict:
         if expires_at > _now_monotonic():
             _TASTE_CREDITS_CACHE.move_to_end(cache_key)
             return result
-        del _TASTE_CREDITS_CACHE[cache_key]
+        # .pop(..., None) not del: build_taste_profile fetches credits
+        # concurrently now, another thread may have evicted this key already.
+        _TASTE_CREDITS_CACHE.pop(cache_key, None)
 
     endpoint = _tmdb_endpoint_kind(kind)
     url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/credits?api_key={api_key}"
@@ -524,7 +532,9 @@ def _resolve_person_id(name: str, expected_department: str | None = None) -> int
         if expires_at > _now_monotonic():
             _PERSON_CACHE.move_to_end(cache_key)
             return result
-        del _PERSON_CACHE[cache_key]
+        # .pop(..., None) not del: same concurrent-eviction race as the
+        # other caches in this module now that callers run in a thread pool.
+        _PERSON_CACHE.pop(cache_key, None)
 
     params = {"api_key": api_key, "query": name, "language": "en-US", "include_adult": "false"}
     data = _get_json(f"https://api.themoviedb.org/3/search/person?{urllib.parse.urlencode(params)}")
@@ -546,7 +556,9 @@ def _get_cached_personalized(cache_key: tuple) -> list[dict] | None:
         return None
     expires_at, items = cached
     if expires_at <= _now_monotonic():
-        del _PERSONALIZED_CACHE[cache_key]
+        # .pop(..., None) not del: same concurrent-eviction race as the
+        # other caches in this module now that callers run in a thread pool.
+        _PERSONALIZED_CACHE.pop(cache_key, None)
         return None
     _PERSONALIZED_CACHE.move_to_end(cache_key)
     return _clone_items(items)

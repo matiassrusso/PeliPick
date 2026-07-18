@@ -3,6 +3,8 @@
 title against TMDb.
 """
 
+from concurrent.futures import ThreadPoolExecutor
+
 from . import tmdb_client
 
 # ponytail: matching + credits are one TMDb request each, and a real
@@ -15,6 +17,27 @@ TOP_GENRES = 8
 TOP_DECADES = 10
 TOP_PEOPLE = 8
 
+# these are blocking network calls, not CPU work, so a thread pool gets real
+# concurrency despite the GIL — this is what turns ~150 sequential TMDb
+# round trips (each ~200-400ms, tens of seconds total) into a few seconds.
+# TMDb's rate limit is ~50 req/s, well above this worker count.
+MATCH_WORKERS = 10
+
+
+def _match_title(item: dict) -> tuple[dict, dict | None]:
+    try:
+        return item, tmdb_client.search_title(item["title"])
+    except tmdb_client.TmdbError:
+        return item, None
+
+
+def _fetch_credits(pair: tuple[dict, dict]) -> tuple[dict, dict | None]:
+    item, match = pair
+    try:
+        return item, tmdb_client.fetch_taste_credits(match["tmdb_id"], kind=match["kind"])
+    except tmdb_client.TmdbError:
+        return item, None
+
 
 def build_taste_profile(watched_items: list[dict]) -> dict:
     total_count = len(watched_items)
@@ -23,14 +46,9 @@ def build_taste_profile(watched_items: list[dict]) -> dict:
     ranked = sorted(watched_items, key=lambda item: item["rating"], reverse=True)
     candidates = ranked[:MAX_TITLES_TO_MATCH]
 
-    matches: list[tuple[dict, dict]] = []
-    for item in candidates:
-        try:
-            match = tmdb_client.search_title(item["title"])
-        except tmdb_client.TmdbError:
-            match = None
-        if match:
-            matches.append((item, match))
+    with ThreadPoolExecutor(max_workers=MATCH_WORKERS) as pool:
+        matched = pool.map(_match_title, candidates)
+    matches: list[tuple[dict, dict]] = [(item, match) for item, match in matched if match]
 
     genre_weight: dict[str, float] = {}
     decade_count: dict[int, int] = {}
@@ -42,10 +60,10 @@ def build_taste_profile(watched_items: list[dict]) -> dict:
 
     director_count: dict[str, int] = {}
     actor_count: dict[str, int] = {}
-    for item, match in matches[:MAX_TITLES_FOR_CREDITS]:
-        try:
-            credits = tmdb_client.fetch_taste_credits(match["tmdb_id"], kind=match["kind"])
-        except tmdb_client.TmdbError:
+    with ThreadPoolExecutor(max_workers=MATCH_WORKERS) as pool:
+        credited = pool.map(_fetch_credits, matches[:MAX_TITLES_FOR_CREDITS])
+    for _item, credits in credited:
+        if credits is None:
             continue
         if credits["director"]:
             director_count[credits["director"]] = director_count.get(credits["director"], 0) + 1
