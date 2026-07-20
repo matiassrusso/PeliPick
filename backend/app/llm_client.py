@@ -107,7 +107,7 @@ def _build_prompt(ratings: list[RatedItem], mood: str, heuristic: RecommendRespo
         f"Perfil de gusto detectado: {digest}\n\n"
         f"Reseñas completas del usuario (hasta 40):\n{ratings_lines}\n\n"
         f"Mood de hoy: {mood or 'sin preferencia'}\n\n"
-        "Candidatos ya filtrados por un motor heurístico. Elegí y ordená como mucho 5, "
+        "Candidatos ya filtrados por un motor heurístico. Elegí y ordená como mucho 6, "
         "usando SOLO títulos de esta lista (no inventes ni agregues otros):\n"
         f"{candidate_lines}\n\n"
         "Devolvé un resumen breve del gusto del usuario que use el perfil de arriba, no una "
@@ -219,4 +219,4 @@ def refine_recommendations(
         raise LlmError("NVIDIA no devolvió picks válidos de la lista de candidatos.")
 
     taste_summary = capitalize_sentence(str(result.get("taste_summary", "")).strip()) or heuristic.taste_summary
-    return RecommendResponse(taste_summary=taste_summary, recommendations=reordered[:5])
+    return RecommendResponse(taste_summary=taste_summary, recommendations=reordered[:6])

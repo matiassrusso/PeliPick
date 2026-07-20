@@ -353,6 +353,24 @@ def _finish_recommend(
         profile=profile,
     )
 
+    # the "don't repeat what I already recommended" exclusion can exhaust a
+    # small candidate pool (narrow genre filter, small personalized pool,
+    # or just enough "nuevos picks" clicks in one session) — resurfacing an
+    # older pick beats failing the request outright once there's genuinely
+    # nothing new left to show.
+    if not response.recommendations and already_recommended:
+        logger.info("Candidate pool exhausted by already-recommended exclusion, retrying without it")
+        response = recommend(
+            ratings,
+            mood,
+            catalog=candidates,
+            also_seen=frozenset(extra_seen),
+            kind_filter=kind_filter,
+            required_any_tags=required_any_tags or None,
+            preference_ratings=preference_ratings,
+            profile=profile,
+        )
+
     if llm_client.is_configured():
         try:
             response = llm_client.refine_recommendations(ratings, mood, response)

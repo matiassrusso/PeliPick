@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useAuth } from "@/hooks/useAuth";
 
 const NAV_ITEMS = [
+  { label: "Home", href: "/" },
   { label: "Recommend", href: "/recommend" },
   { label: "Archive", href: "/history" },
   { label: "Profile", href: "/profile" },

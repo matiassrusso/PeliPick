@@ -31,6 +31,7 @@ class Recommendation(BaseModel):
     why: str
     match_score: int
     tags: list[str]
+    director: str | None = None
     poster_path: str | None = None
     backdrop_path: str | None = None
     overview: str = ""

@@ -1,3 +1,4 @@
+import math
 from collections import Counter
 
 from .catalog import CATALOG
@@ -156,16 +157,16 @@ def _collect_preference_tags(ratings: list[RatedItem]) -> tuple[set[str], set[st
 
 
 def _pick_with_genre_coverage(
-    scored: list[tuple[int, Recommendation, set[str], str]],
+    scored: list[tuple[float, Recommendation, set[str], str]],
     required_any_tags: frozenset[str],
-    limit: int = 5,
+    limit: int = 6,
 ) -> list[Recommendation]:
     # "quiero seleccionar varios géneros, y que el resultado tenga al menos
     # una película de cada uno" — a plain top-N by score can easily starve
     # out a selected genre entirely, so we force one representative per
     # genre first (best-scoring candidate for that genre), then fill the
     # rest by score.
-    chosen: list[tuple[int, Recommendation]] = []
+    chosen: list[tuple[float, Recommendation]] = []
     chosen_ids: set[int] = set()
     covered: set[str] = set()
 
@@ -195,8 +196,8 @@ def _pick_with_genre_coverage(
 
 
 def _pick_with_exploration(
-    scored: list[tuple[int, Recommendation, set[str], str]],
-    limit: int = 5,
+    scored: list[tuple[float, Recommendation, set[str], str]],
+    limit: int = 6,
     exploration_slots: int = 1,
 ) -> list[Recommendation]:
     # reserves a slot for the best-scoring candidate sourced from the
@@ -209,7 +210,7 @@ def _pick_with_exploration(
     reserved = exploration[:exploration_slots]
     reserved_ids = {id(triple[1]) for triple in reserved}
 
-    picks: list[tuple[int, Recommendation]] = [(triple[0], triple[1]) for triple in reserved]
+    picks: list[tuple[float, Recommendation]] = [(triple[0], triple[1]) for triple in reserved]
     for score, rec, _tags, _source in scored:
         if len(picks) >= limit:
             break
@@ -238,7 +239,7 @@ def recommend(
     mood_tags = POSITIVE_HINTS.get(mood_text, [mood_text]) if mood_text else []
     profile_directors, profile_actors, top_decade = _profile_signals(profile)
 
-    scored: list[tuple[int, Recommendation, set[str], str]] = []
+    scored: list[tuple[float, Recommendation, set[str], str]] = []
     for item in catalog:
         if _normalize(item["title"]) in seen_titles:
             continue
@@ -248,16 +249,6 @@ def recommend(
         tags = set(item["tags"])
         if required_any_tags and not (tags & required_any_tags):
             continue
-
-        score = 50
-        score += 12 * len(tags & positive_tags)
-        score -= 10 * len(tags & negative_tags)
-        score += 14 * len(tags & set(mood_tags))
-        if required_any_tags:
-            score += 10 * len(tags & required_any_tags)
-
-        if item["kind"] == "series":
-            score -= 8
 
         # director/actor/decade signal from the persisted taste profile —
         # tmdb_client.fetch_personalized_candidates already biased the pool
@@ -270,15 +261,37 @@ def recommend(
         item_decade = (item["year"] // 10) * 10
         matched_decade = top_decade is not None and item_decade == top_decade
 
+        # evidence points, proportional instead of raw counts: matching 3 of
+        # 3 tags is a stronger signal than 3 of 8, and a mood that matches
+        # completely beats one that grazes a single hint. 0 = no evidence
+        # either way; sign carries direction.
+        tag_count = max(len(tags), 1)
+        points = 0.0
+        points += 30 * len(tags & positive_tags) / tag_count
+        points -= 25 * len(tags & negative_tags) / tag_count
+        if mood_tags:
+            points += 20 * len(tags & set(mood_tags)) / len(mood_tags)
+        if required_any_tags:
+            points += 15 * min(len(tags & required_any_tags), 2) / 2
+        if item["kind"] == "series":
+            points -= 4
         if matched_director:
-            score += 18
-        score += 9 * len(matched_actors)
+            points += 25
+        points += 10 * min(len(matched_actors), 2)
         if matched_decade:
-            score += 6
+            points += 8
 
-        # no score floor here on purpose — we always want up to 5 picks when
-        # the catalog has that many unseen candidates, even if some are weak
-        # matches; the displayed match_score already tells the user how weak.
+        # affinity % via tanh instead of the old additive-then-clamp: 50 is
+        # "no evidence", extra evidence has diminishing returns, and the
+        # asymptotes at 1/99 mean strong picks keep distinct scores instead
+        # of a pile of them pinning at the 99 ceiling (which made ties fall
+        # back to catalog order). 40 sets the slope: one solid signal lands
+        # in the 70s-80s, a near-perfect stack is needed to graze 99.
+        match_score = round(50 + 49 * math.tanh(points / 40))
+
+        # no score floor here on purpose — we always want a full set of picks
+        # when the catalog has that many unseen candidates, even if some are
+        # weak matches; the displayed match_score already tells the user how weak.
         # reasons name the actual matched tags (and, when possible, the
         # specific title from the user's own history behind the match)
         # instead of a single fixed sentence, so two movies with different
@@ -323,15 +336,16 @@ def recommend(
 
         scored.append(
             (
-                score,
+                points,
                 Recommendation(
                     tmdb_id=item.get("tmdb_id"),
                     title=item["title"],
                     year=item["year"],
                     kind=item["kind"],
                     why=capitalize_sentence(", y ".join(reasons) + "."),
-                    match_score=max(1, min(score, 99)),
+                    match_score=match_score,
                     tags=item["tags"],
+                    director=item.get("director"),
                     poster_path=item.get("poster_path"),
                     backdrop_path=item.get("backdrop_path"),
                     overview=item.get("overview", ""),
@@ -342,11 +356,10 @@ def recommend(
             )
         )
 
-    # sort by the raw (uncapped) score, not the clamped match_score — many
-    # strong matches hit the same 99 display ceiling, and sorting on the
-    # clamped value would make ties fall back to catalog order (movies
-    # always listed before series), silently starving series out of the
-    # top 5 even when they scored just as well.
+    # sort by the raw float points, not the rounded match_score — rounding
+    # to a display percentage creates ties that would fall back to catalog
+    # order (movies always listed before series), silently starving series
+    # out of the top picks even when they scored just as well.
     scored.sort(key=lambda quad: quad[0], reverse=True)
 
     if required_any_tags:

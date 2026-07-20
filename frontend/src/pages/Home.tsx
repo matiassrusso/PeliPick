@@ -5,6 +5,7 @@ import { Link } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
+import { useTiltCard } from "@/hooks/useTiltCard";
 
 type Recommendation = {
   id: number;
@@ -44,6 +45,58 @@ const MARQUEE_DIRECTORS = [
   "Tarkovsky", "Wong Kar-wai", "Chantal Akerman", "Bela Tarr", "Lynne Ramsay",
   "Apichatpong", "Kelly Reichardt", "Hong Sang-soo", "Claire Denis", "Kiyoshi Kurosawa",
 ];
+
+// same tilt + glare treatment as the poster cards on /recommend
+function CurrentPickCard({ rec }: { rec: Recommendation }) {
+  const { wrapRef, onMouseMove, onMouseLeave } = useTiltCard();
+
+  return (
+    <article className="group" style={{ perspective: "1000px" }}>
+      <div
+        ref={wrapRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        className="mb-4 relative transition-transform duration-200 ease-out"
+        style={{ transformStyle: "preserve-3d" }}
+      >
+        <div className="relative overflow-hidden">
+          {rec.poster_path ?? rec.backdrop_path ? (
+            <img
+              src={rec.poster_path ?? rec.backdrop_path ?? undefined}
+              alt={rec.title}
+              className="w-full aspect-[2/3] object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+              <Film className="w-8 h-8 text-muted-foreground/40" />
+            </div>
+          )}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 mix-blend-overlay"
+            style={{
+              background:
+                "radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.5), transparent 55%)",
+            }}
+          />
+        </div>
+        <div
+          className="absolute top-2 right-2 px-2 py-1 bg-accent text-accent-foreground font-mono text-xs font-bold"
+          style={{ transform: "translateZ(40px)" }}
+        >
+          {rec.match_score}%
+        </div>
+      </div>
+      <h3 className="text-lg font-black uppercase tracking-tighter leading-none mb-1 group-hover:text-accent transition-colors">
+        {rec.title}
+      </h3>
+      <p className="font-mono text-[10px] text-muted-foreground mb-2">
+        {rec.year}
+        {rec.kind === "series" ? " · Serie" : ""}
+      </p>
+      <p className="font-serif text-sm italic leading-snug">&ldquo;{rec.why}&rdquo;</p>
+    </article>
+  );
+}
 
 export default function Home() {
   const { isAuthenticated, token } = useAuth();
@@ -174,30 +227,7 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {currentPicks.map((rec) => (
-              <article key={rec.id}>
-                <div className="mb-4 relative overflow-hidden">
-                  {rec.poster_path ?? rec.backdrop_path ? (
-                    <img
-                      src={rec.poster_path ?? rec.backdrop_path ?? undefined}
-                      alt={rec.title}
-                      className="w-full aspect-[2/3] object-cover"
-                    />
-                  ) : (
-                    <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
-                      <Film className="w-8 h-8 text-muted-foreground/40" />
-                    </div>
-                  )}
-                  <div className="absolute top-2 right-2 px-2 py-1 bg-accent text-accent-foreground font-mono text-xs font-bold">
-                    {rec.match_score}%
-                  </div>
-                </div>
-                <h3 className="text-lg font-black uppercase tracking-tighter leading-none mb-1">{rec.title}</h3>
-                <p className="font-mono text-[10px] text-muted-foreground mb-2">
-                  {rec.year}
-                  {rec.kind === "series" ? " · Serie" : ""}
-                </p>
-                <p className="font-serif text-sm italic leading-snug">&ldquo;{rec.why}&rdquo;</p>
-              </article>
+              <CurrentPickCard key={rec.id} rec={rec} />
             ))}
           </div>
         </section>

@@ -64,38 +64,30 @@ def test_recommend_carries_tmdb_id_when_present_and_none_otherwise() -> None:
     assert by_title["Mock Only"] is None
 
 
-def test_recommend_breaks_match_score_ties_by_raw_score_not_catalog_order() -> None:
-    # both items clamp to the same displayed match_score (99), but the
-    # series matches more of the user's positive tags, scoring higher before
-    # clamping — it should rank first even though it's listed second in the
-    # catalog and gets the series penalty.
+def test_recommend_ranks_by_score_not_catalog_order() -> None:
+    # the movie is listed first in the catalog, but the series matches the
+    # taste tags fully plus the whole mood — it must rank first despite the
+    # small series penalty and its catalog position
     catalog = [
+        {"title": "Listed First Movie", "year": 2000, "kind": "movie", "tags": ["psychological"]},
         {
-            "title": "Capped Movie",
-            "year": 2000,
-            "kind": "movie",
-            "tags": ["psychological", "dark", "mysterious"],
-        },
-        {
-            "title": "Higher Raw Series",
+            "title": "Higher Scoring Series",
             "year": 2020,
             "kind": "series",
-            "tags": ["psychological", "dark", "mysterious", "funny", "light", "sharp"],
+            "tags": ["psychological", "dark", "mysterious"],
         },
     ]
 
     response = recommend(
-        ratings=[RatedItem(title="Old Movie", rating=5, review="psychological and funny")],
+        ratings=[RatedItem(title="Old Movie", rating=5, review="psychological")],
         mood="psychological",
         catalog=catalog,
     )
 
     assert [item.title for item in response.recommendations] == [
-        "Higher Raw Series",
-        "Capped Movie",
+        "Higher Scoring Series",
+        "Listed First Movie",
     ]
-    assert response.recommendations[0].match_score == 99
-    assert response.recommendations[1].match_score == 99
 
 
 def test_recommend_backfills_weak_matches_instead_of_returning_too_few() -> None:
@@ -168,7 +160,7 @@ def test_recommend_required_any_tags_guarantees_genre_coverage() -> None:
 
     titles = {item.title for item in response.recommendations}
     assert "The Only Romance" in titles
-    assert len(response.recommendations) == 5
+    assert len(response.recommendations) == 6
 
 
 def test_recommend_why_cites_specific_matched_tags_not_a_fixed_template() -> None:
@@ -304,6 +296,54 @@ def test_recommend_scores_and_names_decade_match_from_profile() -> None:
     assert "2010s" in by_title["Right Decade"].why
 
 
+def test_recommend_strong_matches_keep_distinct_scores_instead_of_pinning_at_99() -> None:
+    # under the old additive+clamp scoring both of these hit the 99 ceiling
+    # and became indistinguishable; tanh keeps them ordered and below 99
+    profile = {
+        "top_directors": [{"name": "Fave Director", "count": 3}],
+        "top_actors": [],
+        "decade_breakdown": [],
+    }
+    catalog = [
+        {"title": "Strong", "year": 2020, "kind": "movie", "tags": ["action", "kinetic", "blockbuster"]},
+        {
+            "title": "Stronger",
+            "year": 2020,
+            "kind": "movie",
+            "tags": ["action", "kinetic", "blockbuster"],
+            "director": "Fave Director",
+            "actors": [],
+        },
+    ]
+    ratings = [RatedItem(title="Old", rating=5, review="action packed")]
+
+    response = recommend(ratings=ratings, mood="action", catalog=catalog, profile=profile)
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["Stronger"].match_score > by_title["Strong"].match_score
+    assert by_title["Stronger"].match_score < 99
+
+
+def test_recommend_proportional_tag_match_rewards_focused_candidates() -> None:
+    # same number of matched tags, but the focused candidate matches all of
+    # its tags while the diluted one matches 2 of 6 — focus should win
+    catalog = [
+        {"title": "Focused", "year": 2020, "kind": "movie", "tags": ["dark", "psychological"]},
+        {
+            "title": "Diluted",
+            "year": 2020,
+            "kind": "movie",
+            "tags": ["dark", "psychological", "funny", "light", "romantic", "stylized"],
+        },
+    ]
+    ratings = [RatedItem(title="Old", rating=5, review="dark and psychological")]
+
+    response = recommend(ratings=ratings, mood="", catalog=catalog)
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["Focused"].match_score > by_title["Diluted"].match_score
+
+
 def test_recommend_without_profile_ignores_director_actor_decade_fields() -> None:
     catalog = [
         {"title": "Some Movie", "year": 2020, "kind": "movie", "tags": [], "director": "Anyone", "actors": ["X"]}
@@ -325,7 +365,7 @@ def test_recommend_reserves_one_exploration_slot_even_when_outscored_by_profile_
 
     titles = {item.title for item in response.recommendations}
     assert "Exploration Pick" in titles
-    assert len(response.recommendations) == 5
+    assert len(response.recommendations) == 6
 
 
 def test_recommend_untagged_catalog_items_default_to_profile_source() -> None:

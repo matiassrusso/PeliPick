@@ -15,6 +15,7 @@ import { useLocation } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
+import { useTiltCard } from "@/hooks/useTiltCard";
 
 type Recommendation = {
   id: number;
@@ -25,6 +26,7 @@ type Recommendation = {
   why: string;
   match_score: number;
   tags: string[];
+  director: string | null;
   poster_path: string | null;
   backdrop_path: string | null;
   overview: string;
@@ -278,28 +280,47 @@ function RecommendationCard({
   onSelect: () => void;
 }) {
   const poster = rec.poster_path ?? rec.backdrop_path;
+  const { wrapRef, onMouseMove, onMouseLeave } = useTiltCard();
 
   return (
     <button
       type="button"
       onClick={onSelect}
       className="animate-reveal text-left group block w-full"
-      style={{ animationDelay: `${100 + index * 100}ms` }}
+      style={{ animationDelay: `${100 + index * 100}ms`, perspective: "1000px" }}
     >
-      <div className="mb-6 relative overflow-hidden">
-        {poster ? (
-          <img
-            src={poster}
-            alt={rec.title}
-            loading="lazy"
-            className="w-full aspect-[2/3] object-cover bg-secondary outline outline-1 -outline-offset-1 outline-black/10 transition-transform duration-500 group-hover:scale-[1.02]"
+      <div
+        ref={wrapRef}
+        onMouseMove={onMouseMove}
+        onMouseLeave={onMouseLeave}
+        className="mb-6 relative transition-transform duration-200 ease-out"
+        style={{ transformStyle: "preserve-3d" }}
+      >
+        <div className="relative overflow-hidden">
+          {poster ? (
+            <img
+              src={poster}
+              alt={rec.title}
+              loading="lazy"
+              className="w-full aspect-[2/3] object-cover bg-secondary outline outline-1 -outline-offset-1 outline-black/10 transition-transform duration-700 group-hover:scale-[1.04]"
+            />
+          ) : (
+            <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
+              <Film className="w-10 h-10 text-muted-foreground/40" />
+            </div>
+          )}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 mix-blend-overlay"
+            style={{
+              background:
+                "radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.5), transparent 55%)",
+            }}
           />
-        ) : (
-          <div className="w-full aspect-[2/3] bg-secondary flex items-center justify-center">
-            <Film className="w-10 h-10 text-muted-foreground/40" />
-          </div>
-        )}
-        <div className="absolute -top-3 -right-3 size-16 bg-accent flex items-center justify-center text-accent-foreground font-mono text-lg font-bold shadow-lg">
+        </div>
+        <div
+          className="absolute -top-3 -right-3 size-16 bg-accent flex items-center justify-center text-accent-foreground font-mono text-lg font-bold shadow-2xl shadow-accent/30 ring-1 ring-background/40"
+          style={{ transform: "translateZ(40px)" }}
+        >
           {rec.match_score}%
         </div>
         {rec.kind === "series" && (
@@ -316,14 +337,18 @@ function RecommendationCard({
         )}
       </div>
       <div className="flex justify-between items-baseline gap-4 mb-4">
-        <h3 className="text-2xl font-black uppercase tracking-tighter leading-none">{rec.title}</h3>
+        <h3 className="text-2xl font-black uppercase tracking-tighter leading-none group-hover:text-accent transition-colors">
+          {rec.title}
+        </h3>
         <span className="font-mono text-xs text-muted-foreground shrink-0">{rec.year}</span>
       </div>
       <p className="font-serif text-xl leading-snug mb-4 italic text-balance">
         &ldquo;{rec.why}&rdquo;
       </p>
       <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground border-t border-foreground/10 pt-4">
-        {rec.tags.slice(0, 3).join(" / ") || "Sin tags"}
+        {rec.director
+          ? `Dir. ${rec.director} • ${rec.tags.slice(0, 2).join(" / ") || "—"}`
+          : rec.tags.slice(0, 3).join(" / ") || "Sin tags"}
       </div>
     </button>
   );
@@ -416,19 +441,16 @@ export default function Recommend() {
 
       const data = (await response.json()) as RecommendResponse;
       if (!data.recommendations.length) {
-        throw new Error("No pude leer ratings válidos de esa fuente.");
+        throw new Error(
+          result
+            ? "No encontré picks nuevos para esta búsqueda — ya te mostré todo lo que tenemos. Probá cambiar el modo, el género o el formato."
+            : "No pude leer ratings válidos de esa fuente."
+        );
       }
 
       setResult(data);
       setFeedbackState({});
       toast.success("Tus picks están listos.");
-      if (data.discarded_rows > 0) {
-        toast.warning(
-          `${data.discarded_rows} fila${data.discarded_rows === 1 ? "" : "s"} del CSV no se pudo${
-            data.discarded_rows === 1 ? "" : "ieron"
-          } importar (sin título o sin rating válido).`
-        );
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Falló la recomendación.";
       setError(message);
@@ -624,26 +646,36 @@ export default function Recommend() {
 
         {result && !loading && (
           <>
-            <div className="flex items-center gap-4 mb-12">
-              <span className="font-mono text-xs px-2 py-1 border border-foreground/20">
-                [Resultados · {result.recommendations.length}]
-              </span>
-              <div className="h-px flex-grow bg-foreground/10" />
-              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hidden md:inline max-w-md truncate">
+            <div className="mb-12">
+              <div className="flex items-center gap-4 flex-wrap">
+                <span className="font-mono text-xs px-2 py-1 border border-foreground/20 shrink-0">
+                  [Resultados · {result.recommendations.length}]
+                </span>
+                <div className="h-px flex-grow bg-foreground/10 min-w-8" />
+                <div className="flex gap-4 shrink-0">
+                  <button
+                    onClick={handleGenerate}
+                    className="font-mono text-[10px] uppercase tracking-widest hover:text-accent transition-colors"
+                  >
+                    ↻ Nuevos picks
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResult(null);
+                      setFeedbackState({});
+                    }}
+                    className="font-mono text-[10px] uppercase tracking-widest hover:text-accent transition-colors"
+                  >
+                    Cambiar búsqueda
+                  </button>
+                </div>
+              </div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mt-3">
                 {result.taste_summary}
-              </span>
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setFeedbackState({});
-                }}
-                className="font-mono text-[10px] uppercase tracking-widest hover:text-accent transition-colors shrink-0"
-              >
-                ↻ Nuevos picks
-              </button>
+              </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-10">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-10">
               {result.recommendations.map((rec, i) => (
                 <RecommendationCard
                   key={rec.id}
