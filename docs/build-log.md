@@ -1,5 +1,115 @@
 # Build Log
 
+## 2026-07-20 (rediseño de /recommend: showcase, scoring nuevo, fix de regenerado)
+
+### Botón Home en el nav
+
+Faltaba un link directo al home en el navbar — se agregó a `NAV_ITEMS` en
+`Navbar.tsx`, entre el logo y "Recommend".
+
+### Comparación línea por línea con `/recommend` de Lovable
+
+Se había portado la home ("Current picks") del prototipo de Lovable el
+18/07, pero no la página `/recommend` completa (sidebar de fuente/modo +
+grilla de resultados), que resultó tener su propia data mock ("The Long
+Goodbye" 94%, "Yi Yi" 89%, etc.) y su propio markup. Comparando el HTML
+generado clase por clase contra el real:
+
+- **6 recomendaciones en vez de 5**: límites de `_pick_with_genre_coverage`
+  y `_pick_with_exploration` (`recommender.py`) y el corte `reordered[:5]`
+  del refine de NVIDIA (`llm_client.py`) pasaron a 6.
+- **Grilla a 2 columnas** (`grid-cols-1 sm:grid-cols-2`, sin
+  `lg:grid-cols-3`) en vez de 3 — posters más grandes, coincide con el
+  original.
+- **Animación de tilt 3D + glare en el poster al hacer hover**: rotateX/
+  rotateY calculado a partir de la posición del mouse relativa a la card
+  (imperativo, escribe directo al DOM vía ref para no perder cuadros en
+  cada mousemove), gradiente radial que sigue el cursor vía CSS custom
+  properties (`--mx`/`--my`) con `mix-blend-overlay`, badge de match con
+  `translateZ(40px)` para el efecto de profundidad. Extraído a
+  `frontend/src/hooks/useTiltCard.ts` (hook compartido) y reusado en
+  `CurrentPickCard` del home — mismo tratamiento en los dos lugares donde
+  se muestran posters de recomendaciones.
+- **Línea "Dir. X • género"** en el pie de cada card en vez del dump crudo
+  de tags: se agregó `director: str | None` a `Recommendation`
+  (`models.py`), poblado desde el dato que `tmdb_client.py` ya calculaba
+  para el scoring de director pero nunca exponía. Solo está disponible
+  para el subset de candidatos enriquecidos con créditos de TMDb (no
+  series, no el slice de "exploration") — cuando falta, cae al formato
+  anterior de tags.
+
+### `match_score`: de aditivo-y-clampeado a curva `tanh`
+
+El score viejo (`50 + bonus fijos por señal`, clampeado a `[1, 99]`)
+empujaba cualquier pila de bonus grande al mismo 99% — varios picks fuertes
+quedaban indistinguibles, y el desempate cae al orden de catálogo. Nuevo
+criterio en `recommender.py`:
+
+- Evidencia proporcional en vez de conteo crudo: matchear 3 de 3 tags del
+  candidato pesa más que 3 de 8 (un match focalizado vs. uno diluido).
+- `match_score = round(50 + 49 * tanh(puntos / 40))`: 50% sigue siendo el
+  punto neutro (cero evidencia), pero la curva tiene rendimientos
+  decrecientes y 99% queda asintótico — hace falta casi evidencia perfecta
+  para rozarlo, en vez de cualquier stack de bonus grande.
+- El orden del ranking usa los puntos float sin redondear, así el
+  redondeo del % mostrado nunca genera empates falsos.
+
+Dos tests nuevos fijan el comportamiento (picks fuertes mantienen scores
+distintos sin clavarse en 99, candidato focalizado le gana al diluido); un
+test viejo que fijaba el empate-en-99-desde-el-score-interno quedó
+reescrito para fijar la propiedad que sigue importando (orden por score,
+nunca por posición de catálogo).
+
+### Bug real: "Nuevos picks" agotaba el pool de candidatos
+
+A pedido de Matías, "↻ Nuevos picks" pasó de volver al menú a regenerar
+in-place con la misma fuente/modo/género ya cargados (nuevo botón separado
+"Cambiar búsqueda" para lo que hacía antes). Esto expuso un bug preexistente:
+cada `/recommend` excluye del pool todo lo ya recomendado antes al usuario
+(`get_recently_recommended_titles`, últimos 100 títulos) — con el regenerado
+in-place ese pool se agota mucho más rápido, y al agotarse el backend
+devolvía `recommendations: []` con **200 OK** (no un error de red). El
+frontend interpretaba cualquier lista vacía como "No pude leer ratings
+válidos de esa fuente" — mensaje falso: el archivo se había leído bien, lo
+que se acabó fueron los candidatos nuevos. Reproducido en logs reales de
+Matías (`picks=0 discarded_rows=4`, cuatro veces seguidas). Fix:
+
+- Backend (`main.py`): si `recommend()` devuelve vacío por la exclusión de
+  ya-recomendados, reintenta sin esa exclusión antes de fallar — mismo
+  criterio que ya usaba `recommender.py` ("preferimos resurfacear un pick
+  viejo a devolver cero").
+- Frontend: si la lista vuelve vacía en un regenerate (ya había `result`
+  previo), el mensaje ahora dice lo que realmente pasó — "no encontré picks
+  nuevos, ya te mostré todo lo que tenemos, probá cambiar modo/género/
+  formato" — en vez de acusar a la fuente de datos.
+
+Verificado hammereando el botón contra el backend real hasta agotar el pool
+de un usuario de prueba (6→3 resultados en clicks sucesivos, sin ningún
+`picks=0` ni error después del fix).
+
+### Cartel de "N filas no se pudieron importar": sacado
+
+El toast de `discarded_rows` (que además tenía un bug de gramática —
+"no se pudoieron importar", por concatenar "pudo" + "ieron" en vez de
+conjugar singular/plural bien) aparecía en cada `/recommend/zip`,
+incluidos los regenerados con el mismo archivo. Al revisar `csv_ingest.py`
+quedó claro que esas filas descartadas son casi siempre títulos logueados
+**sin rating** en Letterboxd (uso normal — se puede loguear una vista sin
+puntuarla), no un problema real del import. Matías pidió sacarlo
+directamente: se quitó el toast en `Recommend.tsx`, pero se dejó intacto
+el resto de la cadena (`discarded_rows` lo sigue devolviendo la API y
+logueando el backend), por si en algún momento sirve para un panel menos
+intrusivo.
+
+### Header de resultados: resumen de gusto ya no se corta
+
+El `taste_summary` iba en la misma línea que "↻ Nuevos picks", con
+`truncate max-w-md` — con resúmenes largos se leía cortado contra el
+botón. Pasó a su propia línea debajo del header, sin truncar.
+
+Verificado en vivo contra el backend local (con TMDb/NVIDIA reales) en
+cada paso: 160 tests de backend en verde, typecheck de frontend limpio.
+
 ## 2026-07-18 (comparación con Lovable, fixes de producción, performance)
 
 ### Dark mode: grain layer se aplastaba a negro

@@ -211,12 +211,14 @@
   - la página de historial ya está, pero es una primera pasada: revisita
     picks y resumen; no recupera el zip original ni analytics más finos
 
-- `parse_ratings_csv` (`backend/app/csv_ingest.py`) ahora cuenta las filas del
-  CSV base sin título o sin rating parseable y ese conteo viaja hasta el
-  usuario: `parse_letterboxd_zip` lo devuelve como tercer valor de la tupla,
-  `RecommendResponse.discarded_rows` lo expone en `/recommend/zip`, y el
-  frontend (`Recommend.tsx`) muestra un toast de advertencia cuando es > 0.
-  El import por username no lo necesita (no viene de un CSV)
+- `parse_ratings_csv` (`backend/app/csv_ingest.py`) cuenta las filas del CSV
+  base sin título o sin rating parseable y ese conteo viaja hasta el usuario:
+  `parse_letterboxd_zip` lo devuelve como tercer valor de la tupla,
+  `RecommendResponse.discarded_rows` lo expone en `/recommend/zip`. El
+  frontend ya no lo muestra como cartel (ver entrada 2026-07-20 del build
+  log: esas filas suelen ser logs sin puntuar, uso normal de Letterboxd, no
+  un error de import) — queda solo como dato en la respuesta y en el log de
+  servidor. El import por username no lo necesita (no viene de un CSV)
 
 - observabilidad mínima: antes los `logger.warning` de fallback (TMDb, LLM,
   taste profile) dependían del "handler de último recurso" de Python, que solo
@@ -247,6 +249,22 @@
   catálogo NIM lo soportan): el prompt pide JSON explícitamente y
   `_extract_json` limpia el fence de markdown si el modelo lo agrega.
   `GEMINI_API_KEY` → `NVIDIA_API_KEY`. 158 tests en verde
+
+- rediseño del flujo de `/recommend` (ver `docs/build-log.md`, entrada
+  2026-07-20 para el detalle completo): 6 picks en vez de 5, grilla a 2
+  columnas y animación de tilt 3D + glare en los posters al hacer hover
+  (mouse-tracking, hook compartido `useTiltCard.ts` reusado también en
+  "Current picks" del home), campo `director` nuevo en `Recommendation`
+  para mostrar "Dir. X • género" cuando se conoce. `match_score` pasó de un
+  score aditivo con clamp (que empujaba cualquier pick fuerte al mismo 99%)
+  a `50 + 49*tanh(puntos/40)` con evidencia proporcional a los tags del
+  candidato — 50% sigue siendo neutro, 99% queda asintótico. "↻ Nuevos
+  picks" regenera in-place con la misma búsqueda en vez de volver al menú
+  (nuevo botón "Cambiar búsqueda" para eso), lo que expuso un bug real: la
+  exclusión de "ya recomendado antes" podía agotar el pool y el backend
+  devolvía `recommendations: []` con 200 OK, que el frontend mostraba como
+  "no pude leer la fuente" (mensaje falso). Fix: reintento sin esa
+  exclusión si el pool queda vacío. 160 tests en verde
 
 ## Falta para un MVP más serio
 - terminar de activar el envío real de mail (ver más arriba): falta que
