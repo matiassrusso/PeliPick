@@ -203,3 +203,53 @@ def test_refine_recommendations_cache_expires_after_ttl(monkeypatch) -> None:
     llm_client.refine_recommendations([], "funny", HEURISTIC)
 
     assert len(calls) == 2
+
+
+def test_title_key_ignores_year_accents_and_punctuation() -> None:
+    # El modelo suele devolver el título con el año pegado o con la puntuación
+    # cambiada; antes eso descartaba el pick entero.
+    assert llm_client._title_key("GoodFellas (1990)") == llm_client._title_key("Goodfellas")
+    assert llm_client._title_key("Amélie, 2001") == llm_client._title_key("Amelie")
+    assert llm_client._title_key("Spider-Man: No Way Home") == llm_client._title_key(
+        "Spider Man No Way Home"
+    )
+
+
+def test_refine_matches_titles_with_year_suffix(monkeypatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+
+    def fake_call_nvidia(prompt: str, api_key: str) -> dict:
+        return {
+            "taste_summary": "resumen del agente",
+            "picks": [{"title": "Fake Thriller (2020)", "why": "por el tono oscuro"}],
+        }
+
+    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call_nvidia)
+
+    result = llm_client.refine_recommendations([], "dark", HEURISTIC)
+
+    assert [r.title for r in result.recommendations] == ["Fake Thriller"]
+    assert result.recommendations[0].why == "Por el tono oscuro"
+
+
+def test_refine_does_not_cache_a_response_that_failed_validation(monkeypatch) -> None:
+    # Cachear antes de validar dejaba la respuesta mala pegada el TTL entero,
+    # así que todo reintento fallaba igual sin volver a llamar al modelo.
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+    calls: list[int] = []
+
+    def failing_then_ok(prompt: str, api_key: str) -> dict:
+        calls.append(1)
+        if len(calls) == 1:
+            return {"taste_summary": "x", "picks": [{"title": "Peli Inventada", "why": "no"}]}
+        return {"taste_summary": "ok", "picks": [{"title": "Fake Thriller", "why": "sí"}]}
+
+    monkeypatch.setattr(llm_client, "_call_nvidia", failing_then_ok)
+
+    with pytest.raises(llm_client.LlmError):
+        llm_client.refine_recommendations([], "dark", HEURISTIC)
+
+    result = llm_client.refine_recommendations([], "dark", HEURISTIC)
+
+    assert len(calls) == 2  # volvió a preguntar en vez de servir la respuesta mala
+    assert [r.title for r in result.recommendations] == ["Fake Thriller"]

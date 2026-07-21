@@ -1,6 +1,9 @@
 import json
+import logging
 import os
+import re
 import time
+import unicodedata
 import urllib.request
 from collections import Counter, OrderedDict
 from pathlib import Path
@@ -8,6 +11,8 @@ from urllib.error import URLError
 
 from .models import RatedItem, RecommendResponse
 from .recommender import TAG_PHRASES, capitalize_sentence, positive_tags_from_text
+
+logger = logging.getLogger(__name__)
 
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 CHAT_COMPLETIONS_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
@@ -191,6 +196,23 @@ def _store_cached_refine(cache_key: tuple[str, tuple], result: dict) -> None:
         _REFINE_CACHE.popitem(last=False)
 
 
+_TRAILING_YEAR_RE = re.compile(r"[\s,]*[\(\[]?\b(19|20)\d{2}\b[\)\]]?\s*$")
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _title_key(title: str) -> str:
+    """Clave para matchear el título que devuelve el modelo contra el candidato.
+
+    Comparar el string crudo es demasiado estricto: el modelo suele devolver
+    "GoodFellas (1990)" o cambiar comillas/acentos, y con un solo desajuste se
+    descartaban los 6 picks y todo caía al heurístico (síntoma: los 6 "why"
+    idénticos). Esto normaliza acentos, puntuación y el año al final."""
+    text = _TRAILING_YEAR_RE.sub("", title.strip())
+    text = unicodedata.normalize("NFKD", text.casefold())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return _NON_ALNUM_RE.sub("", text)
+
+
 def refine_recommendations(
     ratings: list[RatedItem], mood: str, heuristic: RecommendResponse
 ) -> RecommendResponse:
@@ -202,21 +224,37 @@ def refine_recommendations(
 
     cache_key = _refine_cache_key(mood, heuristic)
     result = _get_cached_refine(cache_key)
+    cache_hit = result is not None
     if result is None:
         result = _call_nvidia(_build_prompt(ratings, mood, heuristic), api_key)
-        _store_cached_refine(cache_key, result)
 
-    by_title = {rec.title.strip().lower(): rec for rec in heuristic.recommendations}
+    by_title = {_title_key(rec.title): rec for rec in heuristic.recommendations}
     reordered = []
+    unmatched = []
     for pick in result.get("picks", []):
-        rec = by_title.get(str(pick.get("title", "")).strip().lower())
+        raw_title = str(pick.get("title", ""))
+        rec = by_title.get(_title_key(raw_title))
         if rec is None:
+            unmatched.append(raw_title)
             continue
         why = capitalize_sentence(str(pick.get("why", "")).strip())
         reordered.append(rec.model_copy(update={"why": why or rec.why}))
 
+    if unmatched:
+        logger.warning(
+            "NVIDIA devolvió %d título(s) fuera de la lista de candidatos: %s",
+            len(unmatched),
+            unmatched[:6],
+        )
+
     if not reordered:
         raise LlmError("NVIDIA no devolvió picks válidos de la lista de candidatos.")
+
+    # Recién acá: cachear antes de validar dejaba una respuesta inservible
+    # pegada 15 minutos, así que cada reintento en esa ventana fallaba igual
+    # sin volver a preguntarle al modelo.
+    if not cache_hit:
+        _store_cached_refine(cache_key, result)
 
     taste_summary = capitalize_sentence(str(result.get("taste_summary", "")).strip()) or heuristic.taste_summary
     return RecommendResponse(taste_summary=taste_summary, recommendations=reordered[:6])
