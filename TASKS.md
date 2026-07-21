@@ -55,12 +55,15 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       para probar el mail real, con el mail de Matías). No hay endpoint de
       borrar cuenta todavía — sale con la Ola 4 (tarea I) o a mano por SQL
       contra Neon.
-- [ ] **Decidir qué hacer con el import por username en el frontend** — hoy el
-      toggle "username" sigue visible en `Recommend.tsx` pero en producción
-      siempre falla (Cloudflare, ver `letterboxd-scrape-403` en Done). El
-      backend ya devuelve un mensaje que manda al zip, pero probablemente
-      convenga esconder el toggle en prod, o dejarlo con una aclaración.
-      Decisión de producto, no técnica.
+- [ ] **Aprovechar el `tmdb:movieId` del RSS** (mejora, no bug) — el feed trae
+      el id de TMDb ya resuelto por entrada, pero el flujo sigue matcheando
+      por título como con el zip. Usarlo ahorraría requests a TMDb y evitaría
+      errores de matcheo, pero pedía tocar el pipeline compartido con el zip,
+      así que quedó afuera. Detalle en `docs/letterboxd-username-import.md`.
+- [ ] **Avisar en el frontend que el import por username trae solo historial
+      reciente** (~50 entradas del RSS, contra el historial completo del zip).
+      Hoy los dos caminos se ofrecen sin distinción y el zip da un perfil
+      bastante mejor. Decisión de producto, no técnica.
 - [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
       solo tiene sentido reactivarlo una vez confirmado el fix de `/health`
       en producción (si no, vuelve a alertar 405 cada 5 min).
@@ -87,8 +90,47 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Done
 
+- [x] [llm-match-001] **Dos bugs que tiraban los picks del LLM al heurístico**
+      | owner: claude | Encontrados al verificar el import por RSS: el log
+      decía `LLM refine failed: NVIDIA no devolvió picks válidos`, con los 6
+      "why" idénticos — el mismo síntoma que originó `rec-quality-001`.
+      - **Match por string exacto** (`llm_client.py`): los picks del modelo se
+        buscaban con `title.strip().lower()` contra los candidatos, así que
+        `"GoodFellas (1990)"`, un acento distinto o un guion cambiado
+        descartaba **los 6 picks de una** y caía todo al heurístico. Ahora
+        `_title_key()` normaliza año al final, acentos y puntuación antes de
+        comparar, y se loguean los títulos que quedaron afuera (para detectar
+        si alguna vez el modelo empieza a traducir títulos, que era la otra
+        hipótesis).
+      - **Se cacheaba la respuesta antes de validarla:** `_store_cached_refine`
+        corría apenas volvía el modelo, así que una respuesta inservible
+        quedaba pegada los 15 min del TTL y **todo reintento fallaba idéntico
+        sin volver a preguntar**. Ahora se cachea recién después de validar.
+      Verificado en producción end-to-end: misma request pasó de
+      `refined=False` con 6 "why" iguales a `refined=True` con razones
+      distintas citando títulos reales del historial ("Al igual que en 'The
+      Grand Budapest Hotel' y 'Punch-Drunk Love'..."). 181 → 184 tests.
+
+- [x] [letterboxd-rss-001] **Import por username reescrito sobre el feed RSS
+      oficial** | owner: claude | Reemplaza el scraping de HTML que estaba
+      roto en producción (ver `letterboxd-scrape-403` abajo). Letterboxd
+      publica un RSS por perfil — lo recomiendan ellos mismos en la página de
+      la API como alternativa oficial — que sale con `urllib` pelado, sin
+      challenge de Cloudflare. Por entrada trae **más** que el HTML del
+      diario: rating, fecha de visto, rewatch como flag explícito, si el
+      miembro le puso like (el scraper no podía), y `tmdb:movieId` ya resuelto
+      (todavía sin aprovechar, ver `Pending`). Los likes sin puntuar entran
+      con rating sintético 4.5, igual que `likes/films.csv` en el zip.
+      **El costo es el alcance:** el feed expone ~50 entradas contra las ~2000
+      que paginaba el scraper — medido contra `scorsese`: 254 ratings por
+      scraping vs 19 por RSS (10 puntuadas + 9 likes) + 31 vistas. El `.zip`
+      sigue siendo la vía para historial completo. De paso se **borró la
+      dependencia `curl_cffi`**, que existía solo para el scraping.
+      Verificado en producción: 200 con 6 picks (antes 400).
+
 - [x] [letterboxd-scrape-403] **Diagnosticado el 403 del import por username**
-      (no arreglable en código) | owner: claude | Apareció al probar el flujo
+      (no arreglable en código, resuelto después con RSS — ver
+      `letterboxd-rss-001` arriba) | owner: claude | Apareció al probar el flujo
       end-to-end después de activar el LLM. Síntoma: `POST /recommend/letterboxd`
       devuelve 400 con "Letterboxd devolvió un error (403)" en producción,
       pero **el mismo código anda perfecto en local** (200, con la misma
