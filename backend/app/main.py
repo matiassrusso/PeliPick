@@ -498,7 +498,9 @@ def _finish_recommend(
         )
 
     refined = False
-    if refine and llm_client.is_configured():
+    if refine and not llm_client.is_configured():
+        logger.warning("LLM refine skipped: NVIDIA_API_KEY no está configurada.")
+    elif refine:
         try:
             response = llm_client.refine_recommendations(ratings, mood, response)
             refined = True
@@ -611,7 +613,10 @@ def refine_session(
         session_id=session_id,
     )
 
-    if not llm_client.is_configured() or not recommendations:
+    if not llm_client.is_configured():
+        logger.warning("Session refine skipped: NVIDIA_API_KEY no está configurada.")
+        return heuristic
+    if not recommendations:
         return heuristic
 
     try:
