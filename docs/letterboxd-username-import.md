@@ -1,5 +1,28 @@
 # Import por username de Letterboxd (scraping)
 
+> ## ⚠️ No funciona en producción (verificado 2026-07-21)
+>
+> Cloudflare le sirve un **challenge de JavaScript** ("Just a moment...") a
+> las requests que salen de la IP de datacenter de Render, y devuelve 403.
+> Desde una IP residencial (dev local) pasa sin problema, con el mismo código
+> y la misma versión de `curl_cffi`.
+>
+> **No es un problema de fingerprint TLS** — `curl_cffi` sigue haciendo bien
+> su trabajo, eso ya lo pasa. Lo que pesa es la reputación de IP en el bot
+> score de Cloudflare. Confirmado en los logs de producción:
+> `cf_ray=...-PDX, server=cloudflare` + body `"Just a moment..."`, sin código
+> numérico de error (no es un ban de IP, es un challenge).
+>
+> **Por qué no se arregla:** resolver el challenge requiere ejecutar JS, o sea
+> un browser headless en el backend — inviable en el free tier de Render
+> (512MB) y frágil igual. Un proxy residencial cuesta plata y agrava el tema
+> de los ToS de Letterboxd, que ya está marcado como riesgo en
+> `docs/(C) plan-maestro-release.md`.
+>
+> **Estado actual:** el endpoint devuelve un mensaje que manda al usuario al
+> import por `.zip`, que es el camino robusto y no depende de nada de esto.
+> El código se deja como está porque sigue funcionando en dev local.
+
 ## Qué soporta hoy
 
 Alternativa a subir el `.zip` de Letterboxd: `POST /recommend/letterboxd`

@@ -197,3 +197,21 @@ def test_fetch_html_logs_cloudflare_error_code(monkeypatch, caplog) -> None:
 
     assert "cf_error=1006" in caplog.text
     assert "abc123-EZE" in caplog.text
+
+
+def test_fetch_html_403_points_user_to_the_zip(monkeypatch) -> None:
+    # Cloudflare le sirve un challenge de JS a las IPs de datacenter, así que
+    # en producción esta vía siempre falla — el mensaje tiene que ofrecer la
+    # alternativa que sí funciona en vez de un código de error crudo.
+    class ChallengeResponse:
+        status_code = 403
+        ok = False
+        text = "<html><title>Just a moment...</title></html>"
+        headers = {"cf-ray": "x-PDX", "server": "cloudflare"}
+
+    monkeypatch.setattr(
+        ls.curl_requests, "get", lambda url, impersonate, timeout: ChallengeResponse()
+    )
+
+    with pytest.raises(ls.ScrapeError, match="zip"):
+        ls._fetch_html("https://letterboxd.com/someuser/diary/films/page/1/")

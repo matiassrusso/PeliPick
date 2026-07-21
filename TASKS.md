@@ -55,6 +55,12 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       para probar el mail real, con el mail de Matías). No hay endpoint de
       borrar cuenta todavía — sale con la Ola 4 (tarea I) o a mano por SQL
       contra Neon.
+- [ ] **Decidir qué hacer con el import por username en el frontend** — hoy el
+      toggle "username" sigue visible en `Recommend.tsx` pero en producción
+      siempre falla (Cloudflare, ver `letterboxd-scrape-403` en Done). El
+      backend ya devuelve un mensaje que manda al zip, pero probablemente
+      convenga esconder el toggle en prod, o dejarlo con una aclaración.
+      Decisión de producto, no técnica.
 - [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
       solo tiene sentido reactivarlo una vez confirmado el fix de `/health`
       en producción (si no, vuelve a alertar 405 cada 5 min).
@@ -80,6 +86,29 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [letterboxd-scrape-403] **Diagnosticado el 403 del import por username**
+      (no arreglable en código) | owner: claude | Apareció al probar el flujo
+      end-to-end después de activar el LLM. Síntoma: `POST /recommend/letterboxd`
+      devuelve 400 con "Letterboxd devolvió un error (403)" en producción,
+      pero **el mismo código anda perfecto en local** (200, con la misma
+      versión pinneada `curl_cffi==0.15.0` y el mismo `impersonate="chrome"`).
+      Diagnóstico en dos pasos, agregando logging del lado del server (mismo
+      método que sirvió con Resend): primero el código de error de Cloudflare
+      (salió `?`, o sea sin código numérico → descarta el 1010 de fingerprint
+      y los 1006/1007/1008 de IP baneada), después un snippet del body →
+      **`"Just a moment..."`, la página de challenge de JavaScript**, con
+      `cf_ray=...-PDX` (Portland, la región de Render) y `server=cloudflare`.
+      **Conclusión:** no es fingerprint TLS (`curl_cffi` sigue pasando esa
+      parte), es la **reputación de IP** — Cloudflare le sirve challenge a las
+      IPs de datacenter y no a las residenciales. Resolverlo requiere ejecutar
+      JS (browser headless, inviable en el free tier de Render) o un proxy
+      residencial (cuesta plata y agrava el tema ToS ya marcado como riesgo en
+      el plan maestro). **Lo que sí se hizo:** el 403/503 ahora devuelve un
+      mensaje que manda al usuario al import por `.zip` en vez de un código
+      crudo, el logging de diagnóstico queda para futuras regresiones, y la
+      limitación quedó documentada arriba de todo en
+      `docs/letterboxd-username-import.md`. 182 → 184 tests.
 
 - [x] [resend-001] **Resend activado end-to-end** | owner: claude + Matías |
       Dominio `butaca.xyz` verificado en Resend (región `us-east-1`, la misma

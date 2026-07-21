@@ -72,6 +72,14 @@ def _fetch_html(url: str) -> str | None:
             response.headers.get("server", "?"),
             snippet,
         )
+        if response.status_code in (403, 503):
+            # Cloudflare le sirve un challenge de JS a las IPs de datacenter
+            # (desde una residencial pasa). No se puede resolver sin un browser
+            # headless, así que lo honesto es mandar al usuario al zip.
+            raise ScrapeError(
+                "Letterboxd está bloqueando el import automático desde el servidor. "
+                "Probá con el export .zip de tu cuenta, que no depende de esto."
+            )
         raise ScrapeError(f"Letterboxd devolvió un error ({response.status_code}).")
     return response.text
 
