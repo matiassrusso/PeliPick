@@ -33,29 +33,23 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Pending
 
-> Estado al 2026-07-21: lo acumulado el 2026-07-20 (Olas 1-3 + rebrand +
-> fix de `/health`) ya está commiteado y pusheado a `main` (`c698ad3`), 180
-> tests en verde. GitHub y Vercel renombrados a Butaca puertas adentro. Falta
-> comprar el dominio para que las URLs públicas dejen de ser `pelipick.*`.
+> Estado al 2026-07-21: dominio propio comprado y en producción. Frontend en
+> [butaca.xyz](https://butaca.xyz) (Vercel), backend en
+> [api.butaca.xyz](https://api.butaca.xyz) (Render). `pelipick.vercel.app` /
+> `pelipick-backend.onrender.com` siguen andando en paralelo (mismos
+> proyectos, no se borró nada). Ver Done de hoy (`domain-001`) para el
+> detalle completo.
 
 - [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
       solo tiene sentido reactivarlo una vez confirmado el fix de `/health`
       en producción (si no, vuelve a alertar 405 cada 5 min).
-- [ ] **Comprar dominio** (Fase 0.4) — es ahora el único camino real para que
-      las URLs pasen a ser `butaca.*` (ver Done de hoy, `rebrand-externo-001`).
-      Libres al 2026-07-20: `butaca.io`, `butaca.co`, `butaca.me`,
-      `butaca.film`. Tomados: `.com`, `.app`, `.tv`, `.ar`, `.com.ar`. Ojo:
-      en la cuenta de Vercel figura `pelipick.com` registrado hace unos días
-      por un registrador de terceros — revisar si es intencional antes de
-      comprar otro.
-- [ ] **Setear el dominio como custom domain** en Vercel y Render una vez
-      comprado — recién ahí actualizar `render.yaml` (`BUTACA_ALLOWED_ORIGINS`
-      y opcionalmente el campo `name`), el fallback de `main.py`, el
-      `DEFAULT_RESET_URL` de `mailer.py`, la env var `VITE_API_BASE_URL` en
-      Vercel, y las ~6 referencias de docs a `pelipick.vercel.app` /
-      `pelipick-backend.onrender.com`.
-- [ ] **Resend** — bloqueado por el dominio. Verificar dominio + setear
-      `RESEND_API_KEY` en Render. Cierra el último pendiente del MVP.
+- [ ] **Resend** — ya desbloqueado por el dominio. Crear cuenta, verificar
+      `butaca.xyz`, y setear `RESEND_API_KEY` en Render. Cierra el último
+      pendiente del MVP.
+- [ ] **Activar auto-renew de `butaca.xyz`** en Namecheap antes de que venza
+      (21 de julio de 2027) — hoy está apagado a propósito para no llevarse
+      un cargo sorpresa, pero eso también significa que se pierde el dominio
+      si nadie lo renueva a mano.
 - [ ] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
       H (onboarding sin Letterboxd), I (verificación de email + borrar
       cuenta), J (README — decidir si se reescribe en inglés o se actualiza
@@ -74,6 +68,37 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [domain-001] Comprado `butaca.xyz` (Namecheap, $1,58 el año 1 + $0,20
+      ICANN fee, sin auto-renew) y configurado de punta a punta como dominio
+      real de producción | owner: claude + Matías (compra y checkout manual,
+      resto vía CLI/DNS) | DNS en Namecheap (Advanced DNS de `butaca.xyz`):
+      - `A` `@` → `76.76.21.21` (Vercel)
+      - `CNAME` `www` → `cname.vercel-dns.com.` (Vercel)
+      - `CNAME` `api` → `pelipick-backend.onrender.com.` (Render)
+      Se borró el CNAME `www → parkingpage.namecheap.com` que Namecheap
+      arma solo por default (competía con el registro de Vercel) y el
+      "Redirect Domain" automático (`butaca.xyz → www.butaca.xyz` vía el
+      servicio de forwarding de Namecheap, también hubiera competido con el
+      A record). `api.butaca.xyz` agregado como Custom Domain en Render
+      (verificado, certificado emitido). `butaca.xyz`/`www.butaca.xyz`
+      agregados al proyecto de Vercel vía `vercel domains add`, verificados
+      (`vercel domains verify`), redeploy manual disparado para que tomen el
+      alias nuevo. Código actualizado: `render.yaml`
+      (`BUTACA_ALLOWED_ORIGINS` → `https://butaca.xyz,https://www.butaca.xyz,
+      https://pelipick.vercel.app`, sin tocar el campo `name` por el riesgo
+      ya documentado en `rebrand-externo-001`), `backend/app/main.py`
+      (`_DEFAULT_ALLOWED_ORIGINS`), `backend/app/mailer.py`
+      (`DEFAULT_RESET_URL`), env var `VITE_API_BASE_URL` en Vercel (borrada y
+      recreada apuntando a `https://api.butaca.xyz`, requirió redeploy manual
+      porque Vite la hornea en build time, no runtime). Docs actualizados a
+      las URLs nuevas donde reflejaban estado actual (no logs fechados):
+      `AGENTS.md`, `CLAUDE.md`, `DESIGN.md`, `docs/mvp-status.md`. 180 tests
+      de backend siguen en verde (ninguno dependía de las URLs viejas).
+      Verificado en vivo: `curl https://api.butaca.xyz/health` → 200;
+      `curl http://butaca.xyz` sirve el HTML real de la app (HTTPS del
+      apex/www tardó unos minutos más en terminar de emitir el certificado,
+      normal en Vercel tras verificar un dominio nuevo).
 
 - [x] [rebrand-externo-001] Commit + push de lo acumulado del 2026-07-20
       (`c698ad3`, 180 tests en verde) y rebrand externo parcial | owner:

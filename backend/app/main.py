@@ -99,6 +99,8 @@ def _enforce_recommend_rate_limit(user_id: int) -> None:
 
 
 _DEFAULT_ALLOWED_ORIGINS = [
+    "https://butaca.xyz",
+    "https://www.butaca.xyz",
     "https://pelipick.vercel.app",
     "http://localhost:4173",
     "http://127.0.0.1:4173",

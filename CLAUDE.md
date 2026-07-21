@@ -16,7 +16,7 @@ If a session is drifting without moving hacia calidad de recomendación o clarid
 2. Implementación en `backend` (FastAPI + SQLite) y/o `frontend` (React + Vite + Tailwind)
 3. Si hay varios agentes en paralelo: coordinación por `TASKS.md` (worktrees separados, marcar In Progress → Done, nunca mergear a `main` solo)
 4. Tests de backend en verde antes de cerrar (180 tests a la fecha)
-5. Deployeado: frontend [pelipick.vercel.app](https://pelipick.vercel.app/) (Vercel), backend [pelipick-backend.onrender.com](https://pelipick-backend.onrender.com) (Render, free tier — cold start en la primera request)
+5. Deployeado: frontend [butaca.xyz](https://butaca.xyz/) (Vercel), backend [api.butaca.xyz](https://api.butaca.xyz) (Render, free tier — cold start en la primera request)
 
 ## Key People
 
@@ -43,35 +43,37 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 
 ## Current Status
 
-> **Last updated:** 2026-07-20 (sesión de release: olas 1-3 + Neon + rebrand)
+> **Last updated:** 2026-07-21 (commit + push de lo acumulado, dominio propio en producción)
 >
 > ### ⚠️ Leer primero al retomar
 >
-> **El proyecto se llama ahora `Butaca`** (antes PeliPick). El rebrand está
-> hecho en todo el repo, **pero las URLs de deploy siguen siendo
-> `pelipick.vercel.app` / `pelipick-backend.onrender.com`** a propósito: son la
-> identidad real del deploy y cambiarlas en código sin renombrar antes los
-> proyectos en Vercel/Render rompe CORS y la API. La carpeta del proyecto y el
-> `CLAUDE.md` raíz del vault también siguen diciendo PeliPick.
+> **El proyecto se llama `Butaca`** (antes PeliPick) y ya tiene dominio propio
+> en vivo: frontend en [butaca.xyz](https://butaca.xyz/) (Vercel), backend en
+> [api.butaca.xyz](https://api.butaca.xyz) (Render). Las URLs `pelipick.*`
+> siguen funcionando en paralelo (mismos proyectos, no se borraron) pero ya no
+> son la identidad real. La carpeta local del proyecto y el `CLAUDE.md` raíz
+> del vault todavía dicen PeliPick — pendiente, requiere permiso porque toca
+> archivos fuera de este repo (ver `Pending` en `TASKS.md`).
 >
-> **Nada de la sesión del 2026-07-20 está commiteado ni deployado.** El working
-> tree tiene, todo junto: las Olas 1-3 del plan de implementación, el rebrand a
-> Butaca y el fix de `/health`. 180 tests en verde, build de frontend limpio.
-> **Antes de tocar código, leer la sección `Pending` de `TASKS.md`.**
+> Todo lo de la sesión del 2026-07-20 (Olas 1-3, rebrand, fix de `/health`) ya
+> está commiteado y pusheado a `main` (`c698ad3`). 180 tests en verde.
 >
-> Lo hecho en esa sesión (detalle completo en `docs/build-log.md`):
-> - **Olas 1-3** del plan (`docs/(C) plan-implementacion-codigo.md`): warm-up
->   del backend, rate limiting de `/recommend/*` + `GET /admin/stats`, feedback
->   loop real en el scoring (la tabla `feedback` por fin se lee), modo
->   watchlist, "dónde verla" (watch providers), y render progresivo (picks
->   heurísticos al instante + refine del LLM después). 160 → 179 tests.
-> - **Migración de Neon** de São Paulo a Oregon (misma región que Render):
->   login **2.85s → 0.59s** medido contra producción.
-> - **Fix de `/health`** (405 a monitores de uptime, que prueban con `HEAD`).
->   El monitor de UptimeRobot quedó **pausado** hasta deployar esto.
-> - **Rebrand a Butaca.** Dominio sin comprar; libres `butaca.io/.co/.me/.film`.
-> - **Pendiente:** Ola 4 (onboarding sin Letterboxd, verificación de email +
->   borrar cuenta, README), dominio + Resend.
+> Lo hecho el 2026-07-21 (detalle completo en `TASKS.md` y `docs/build-log.md`):
+> - Commit + push de todo lo acumulado.
+> - GitHub renombrado a `matiassrusso/Butaca`, proyecto de Vercel renombrado a
+>   `butaca` — ninguno de los dos cambió la URL pública por sí solo
+>   (`butaca.vercel.app` ya era de otro proyecto ajeno).
+> - **Comprado `butaca.xyz`** y configurado de punta a punta: DNS en Namecheap
+>   (A `@`→Vercel, CNAME `www`→Vercel, CNAME `api`→Render), custom domain
+>   verificado en Render, `BUTACA_ALLOWED_ORIGINS`/`VITE_API_BASE_URL`/
+>   `DEFAULT_RESET_URL` actualizados y redeployados.
+> - Render **no se pudo renombrar de verdad** (la URL `.onrender.com` es fija
+>   desde la creación del servicio, recrearlo perdería `DATABASE_URL` y las
+>   demás env vars `sync: false`) — resuelto con el custom domain en vez de
+>   forzar el rename.
+> - **Pendiente:** activar Resend (ya desbloqueado por el dominio), despausar
+>   UptimeRobot, Ola 4 (onboarding sin Letterboxd, verificación de email +
+>   borrar cuenta, README).
 >
 > **Status:** Activo, MVP deployeado, rediseño visual completo ("Hybrid critic notebook", ver `DESIGN.md` y `docs/mvp-status.md`) — frontend [pelipick.vercel.app](https://pelipick.vercel.app/), backend [pelipick-backend.onrender.com](https://pelipick-backend.onrender.com). 160 tests de backend. Cerrados los 3 pendientes de MVP que quedaban: reporte de filas descartadas del CSV base (`discarded_rows` en `/recommend/zip`, aunque el cartel al usuario se sacó el 2026-07-20, ver abajo), observabilidad mínima (`logging.basicConfig` + log INFO por recomendación completada), y mail real de recuperación de contraseña vía Resend (`backend/app/mailer.py`, campo `email` en `users`, flujo completo en el frontend con `ResetPassword.tsx`) — falta que Matías cree la cuenta de Resend y setee `RESEND_API_KEY` para que funcione en producción. Migrado el agente de IA de Gemini a NVIDIA NIM (`nvidia/nemotron-3-super-120b-a12b`, `chat_template_kwargs.enable_thinking=false`): Gemini tenía un modo "thinking" que no se podía desactivar (~20s por call) y forzaba una cadena de 4 modelos de fallback por cuota diaria; NVIDIA da un solo endpoint compatible con OpenAI, +100 modelos gratis con una key, y este modelo (familia Nemotron 3, más nueva que la Llama-Nemotron original) permite apagar el razonamiento vía un parámetro real de la API sin perder calidad de instruction-following.
 >

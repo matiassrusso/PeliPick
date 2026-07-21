@@ -77,8 +77,8 @@ entra en esta fase** (decisión explícita: solo Affinity Map, no el sistema de 
 - **Data Source:** TMDb (no OMDb).
 - **AI:** Gemini vía `backend/app/llm_client.py`, cliente `urllib` stdlib (no Vercel AI
   SDK).
-- **Deployment:** Vercel (frontend, [pelipick.vercel.app](https://pelipick.vercel.app/))
-  + Render (backend, Postgres/Neon en producción).
+- **Deployment:** Vercel (frontend, [butaca.xyz](https://butaca.xyz/))
+  + Render (backend, [api.butaca.xyz](https://api.butaca.xyz), Postgres/Neon en producción).
 
 ## 5. Anti-Patterns (What NOT to build)
 

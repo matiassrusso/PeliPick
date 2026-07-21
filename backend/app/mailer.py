@@ -8,7 +8,7 @@ ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 RESEND_URL = "https://api.resend.com/emails"
 REQUEST_TIMEOUT = 10
 DEFAULT_FROM = "Butaca <onboarding@resend.dev>"
-DEFAULT_RESET_URL = "https://pelipick.vercel.app/reset-password"
+DEFAULT_RESET_URL = "https://butaca.xyz/reset-password"
 
 
 class MailError(Exception):

@@ -14,6 +14,6 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: BUTACA_ALLOWED_ORIGINS
-        value: https://pelipick.vercel.app
+        value: https://butaca.xyz,https://www.butaca.xyz,https://pelipick.vercel.app
       - key: DATABASE_URL
         sync: false

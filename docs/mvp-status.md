@@ -175,9 +175,9 @@
   feedback, History (ambas pestañas) y Profile con datos reales, toggle de
   tema dark⇄light
 - build verificado de frontend
-- deploy: frontend en Vercel ([pelipick.vercel.app](https://pelipick.vercel.app/)),
-  backend en Render ([pelipick-backend.onrender.com](https://pelipick-backend.onrender.com)).
-  CORS restringido al dominio de Vercel (antes `allow_origins=["*"]`)
+- deploy: frontend en Vercel ([butaca.xyz](https://butaca.xyz/)),
+  backend en Render ([api.butaca.xyz](https://api.butaca.xyz)).
+  CORS restringido a los dominios de Vercel/producción (antes `allow_origins=["*"]`)
 - persistencia en producción vía Postgres (Neon, free tier permanente): el
   free tier de Render tiene filesystem efímero y borra el SQLite en cada
   redeploy, así que `backend/app/db.py` ahora soporta los dos backends por
