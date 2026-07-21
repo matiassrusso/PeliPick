@@ -1,6 +1,6 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Film } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
@@ -41,68 +41,8 @@ const STEPS = [
   },
 ];
 
-// Ritmo del marquee en reposo. Menos segundos = más rápido.
-const MARQUEE_SECONDS_PER_NAME = 1.8;
-// Cuánto puede acelerarse como máximo al scrollear fuerte (multiplicador).
-const MARQUEE_MAX_BOOST = 6;
-
-// Sube rápido, baja despacio. Simétrico, el efecto era invisible: mientras
-// scrolleás fuerte el marquee se está yendo de pantalla, y al soltar volvía a
-// 1x en ~0.3s, así que cuando frenabas y mirabas ya no quedaba nada que ver.
-// Con la salida lenta lo ves desacelerando cuando llegás.
-const MARQUEE_ATTACK = 0.12;
-const MARQUEE_RELEASE = 0.02;
-
-/** Siguiente velocidad del marquee, dado cuánto se scrolleó en este frame.
- *
- * Separada del efecto para poder razonarla y probarla sin navegador. Quieto
- * (0 px) devuelve algo que tiende a 1; scrolleando fuerte trepa hasta el tope.
- * El suavizado evita el temblor entre frames con velocidad despareja. */
-export function nextMarqueeRate(rate: number, pxPorFrame: number): number {
-  const target = Math.min(1 + pxPorFrame * 0.12, MARQUEE_MAX_BOOST);
-  const suavizado = target > rate ? MARQUEE_ATTACK : MARQUEE_RELEASE;
-  return rate + (target - rate) * suavizado;
-}
-
-/** Acelera el marquee según qué tan rápido scrollea el usuario.
- *
- * Mide el desplazamiento por frame en vez de escuchar `scroll`, que dispara a
- * ritmo irregular y hace saltar el valor. Cambia `playbackRate` en vez de
- * `animationDuration`: tocar la duración en pleno vuelo reinicia la animación
- * y produce un corte visible. */
-function useScrollBoostedMarquee() {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Con prefers-reduced-motion el CSS apaga la animación: no hay nada que
-    // acelerar y no queremos dejar un rAF girando al pedo.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    let lastY = window.scrollY;
-    let rate = 1;
-    // La animación se busca en cada frame hasta encontrarla: al montar todavía
-    // puede no estar registrada en getAnimations(), y capturarla una sola vez
-    // acá dejaba el efecto muerto sin aviso.
-    let animation: Animation | undefined;
-
-    let frame = requestAnimationFrame(function tick() {
-      animation ??= el.getAnimations()[0];
-
-      const y = window.scrollY;
-      rate = nextMarqueeRate(rate, Math.abs(y - lastY));
-      lastY = y;
-      if (animation) animation.playbackRate = rate;
-
-      frame = requestAnimationFrame(tick);
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  return ref;
-}
+// Ritmo del marquee. Menos segundos = más rápido.
+const MARQUEE_SECONDS_PER_NAME = 0.5;
 
 // 50 actores + 15 directores, mezclados a mano para que los directores queden
 // repartidos y no en bloque. Curada a propósito y no traída de
@@ -181,7 +121,6 @@ export default function Home() {
   const { scrollY } = useScroll();
   const heroY = useTransform(scrollY, [0, 600], [0, -80]);
   const heroOpacity = useTransform(scrollY, [0, 500], [1, 0.3]);
-  const marqueeRef = useScrollBoostedMarquee();
   const [latestSession, setLatestSession] = useState<RecommendationSession | null>(null);
 
   const ctaHref = isAuthenticated ? "/recommend" : "/login";
@@ -294,7 +233,6 @@ export default function Home() {
             cambie si se agregan o sacan nombres — subí o bajá MARQUEE_SECONDS_PER_NAME
             para ajustar el ritmo. */}
         <div
-          ref={marqueeRef}
           className="flex whitespace-nowrap animate-marquee font-serif italic text-2xl md:text-3xl"
           style={{ animationDuration: `${MARQUEE_NAMES.length * MARQUEE_SECONDS_PER_NAME}s` }}
         >
