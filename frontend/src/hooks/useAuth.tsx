@@ -8,7 +8,7 @@ import {
 } from "react";
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8001";
-const TOKEN_KEY = "pelipick_token";
+const TOKEN_KEY = "butaca_token";
 
 type User = { username: string };
 
@@ -30,6 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    // warm up the Render free-tier backend on first load so its ~1min cold
+    // start overlaps with the user reading the landing / typing credentials,
+    // instead of stalling their first real request. Fire-and-forget; a logged-
+    // in user's /auth/me below already does this, but a fresh visitor doesn't.
+    fetch(`${API_BASE_URL}/health`).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!token) {

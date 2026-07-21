@@ -1,4 +1,4 @@
-# PeliPick - producto y MVP
+# Butaca - producto y MVP
 
 ## Qué problema resuelve
 

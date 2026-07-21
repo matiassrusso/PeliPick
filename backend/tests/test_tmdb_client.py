@@ -10,6 +10,7 @@ def clear_tmdb_cache() -> None:
     tmdb_client._TASTE_CREDITS_CACHE.clear()
     tmdb_client._PERSON_CACHE.clear()
     tmdb_client._PERSONALIZED_CACHE.clear()
+    tmdb_client._WATCH_PROVIDERS_CACHE.clear()
 
 
 def test_fetch_candidates_requires_api_key(monkeypatch) -> None:
@@ -324,6 +325,10 @@ def test_search_title_matches_movie_first(monkeypatch) -> None:
         "kind": "movie",
         "genres": ["Drama", "Thriller"],
         "tags": ["character", "dark", "psychological"],
+        "poster_path": None,
+        "backdrop_path": None,
+        "overview": "",
+        "vote_average": None,
     }
 
 
@@ -605,3 +610,47 @@ def test_fetch_taste_credits_extracts_director_and_top_cast(monkeypatch) -> None
 
     assert credits == {"director": "The Director", "actors": ["First", "Second", "Third"]}
 
+
+
+def test_fetch_watch_providers_maps_region_offers(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setenv("BUTACA_WATCH_REGION", "AR")
+
+    def fake_get_json(url: str) -> dict:
+        assert "/movie/42/watch/providers" in url
+        return {
+            "results": {
+                "AR": {
+                    "link": "https://www.themoviedb.org/movie/42/watch",
+                    "flatrate": [
+                        {"provider_name": "Netflix", "logo_path": "/nf.jpg", "display_priority": 1},
+                        {"provider_name": "Max", "logo_path": "/max.jpg", "display_priority": 0},
+                    ],
+                    "rent": [{"provider_name": "Apple TV", "logo_path": "/apple.jpg"}],
+                },
+                "US": {"flatrate": [{"provider_name": "Hulu", "logo_path": "/hulu.jpg"}]},
+            }
+        }
+
+    monkeypatch.setattr(tmdb_client, "_get_json", fake_get_json)
+
+    providers = tmdb_client.fetch_watch_providers(42, kind="movie")
+
+    assert providers["link"] == "https://www.themoviedb.org/movie/42/watch"
+    # sorted by display_priority, so Max (0) comes before Netflix (1)
+    assert [p["name"] for p in providers["flatrate"]] == ["Max", "Netflix"]
+    assert providers["flatrate"][0]["logo_path"] == "https://image.tmdb.org/t/p/w92/max.jpg"
+    assert [p["name"] for p in providers["rent"]] == ["Apple TV"]
+    assert providers["buy"] == []
+
+
+def test_fetch_watch_providers_empty_when_region_absent(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setenv("BUTACA_WATCH_REGION", "AR")
+    monkeypatch.setattr(
+        tmdb_client, "_get_json", lambda url: {"results": {"US": {"flatrate": []}}}
+    )
+
+    providers = tmdb_client.fetch_watch_providers(99, kind="movie")
+
+    assert providers == {"link": None, "flatrate": [], "rent": [], "buy": []}

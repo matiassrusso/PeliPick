@@ -33,26 +33,37 @@ type Recommendation = {
   vote_average: number | null;
 };
 
+type Provider = { name: string; logo_path: string | null };
+
 type MovieDetails = {
   cast: { name: string; character: string; profile_path: string | null }[];
   trailer_key: string | null;
+  providers: {
+    link: string | null;
+    flatrate: Provider[];
+    rent: Provider[];
+    buy: Provider[];
+  } | null;
 };
 
 type RecommendResponse = {
   taste_summary: string;
   recommendations: Recommendation[];
   discarded_rows: number;
+  session_id: number | null;
+  refined: boolean;
 };
 
 type FeedbackStatus = "interested" | "not_interested" | "seen";
 
-type RecommendMode = "profile" | "recent" | "genres";
+type RecommendMode = "profile" | "recent" | "genres" | "watchlist";
 type KindFilter = "movie" | "series" | "both";
 
 const modeOptions: { mode: RecommendMode; label: string }[] = [
   { mode: "profile", label: "Perfil completo" },
   { mode: "recent", label: "Últimas vistas" },
   { mode: "genres", label: "Selección de géneros" },
+  { mode: "watchlist", label: "De mi watchlist" },
 ];
 
 const kindFilterOptions: { value: KindFilter; label: string }[] = [
@@ -233,6 +244,52 @@ function MovieModal({
               </div>
             )}
 
+            {details?.providers && (
+              <div className="border-t border-foreground/10 pt-4 mb-6">
+                <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-2">
+                  Dónde verla
+                  {details.providers.link && (
+                    <a
+                      href={details.providers.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-accent"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+                {details.providers.flatrate.length > 0 || details.providers.rent.length > 0 || details.providers.buy.length > 0 ? (
+                  <>
+                    {details.providers.flatrate.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {details.providers.flatrate.map((prov) => (
+                          <span
+                            key={prov.name}
+                            className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase px-2 py-1 border border-foreground/20"
+                          >
+                            {prov.logo_path && <img src={prov.logo_path} alt="" className="w-4 h-4" />}
+                            {prov.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {[...new Set([...details.providers.rent, ...details.providers.buy].map((p) => p.name))].length > 0 && (
+                      <div className="font-mono text-[10px] text-muted-foreground">
+                        Alquiler/compra:{" "}
+                        {[...new Set([...details.providers.rent, ...details.providers.buy].map((p) => p.name))].join(" · ")}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    No está en streaming en Argentina ahora.
+                  </div>
+                )}
+                <div className="font-mono text-[9px] text-muted-foreground/50 mt-2">Datos de JustWatch</div>
+              </div>
+            )}
+
             <div className="mt-auto pt-4 border-t border-foreground/10">
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
                 ¿Qué te parece este pick?
@@ -371,6 +428,7 @@ export default function Recommend() {
 
   const [result, setResult] = useState<RecommendResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refining, setRefining] = useState(false);
   const [error, setError] = useState("");
   const [feedbackState, setFeedbackState] = useState<Record<number, FeedbackStatus>>({});
   const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null);
@@ -380,6 +438,14 @@ export default function Recommend() {
       navigate("/login");
     }
   }, [authLoading, isAuthenticated, navigate]);
+
+  // watchlist mode needs a zip import (username scraping doesn't carry one),
+  // so fall back to the default mode if the user switches source while it's on
+  useEffect(() => {
+    if (importMethod === "username" && mode === "watchlist") {
+      setMode("profile");
+    }
+  }, [importMethod, mode]);
 
   const processFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -418,6 +484,10 @@ export default function Recommend() {
       formData.append("mode", mode);
       formData.append("kind_filter", kindFilter);
       formData.append("genres", mode === "genres" ? selectedGenres.join(",") : "");
+      // fast first render: get the heuristic picks now, swap in the LLM-written
+      // reasons afterward via the refine endpoint so the user isn't waiting on
+      // the ~5-15s model call to see anything
+      formData.append("refine", "0");
 
       let endpoint = `${API_BASE_URL}/recommend/zip`;
       if (importMethod === "zip") {
@@ -451,12 +521,47 @@ export default function Recommend() {
       setResult(data);
       setFeedbackState({});
       toast.success("Tus picks están listos.");
+      if (data.session_id != null) void refineSession(data.session_id);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Falló la recomendación.";
       setError(message);
       toast.error(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refineSession(sessionId: number) {
+    if (!token) return;
+    setRefining(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/recommend/sessions/${sessionId}/refine`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return;
+
+      const refined = (await response.json()) as RecommendResponse;
+      if (!refined.refined) return;
+
+      const whyById = new Map(refined.recommendations.map((r) => [r.id, r.why]));
+      setResult((prev) => {
+        // guard against a stale refine landing after the user regenerated:
+        // only patch the result this refine actually belongs to
+        if (!prev || prev.session_id !== refined.session_id) return prev;
+        return {
+          ...prev,
+          taste_summary: refined.taste_summary,
+          recommendations: prev.recommendations.map((rec) => ({
+            ...rec,
+            why: whyById.get(rec.id) ?? rec.why,
+          })),
+        };
+      });
+    } catch {
+      // refine is best-effort; on any failure the heuristic picks just stay
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -560,20 +665,29 @@ export default function Recommend() {
                   [02] Qué querés ver hoy
                 </div>
                 <div className="space-y-2">
-                  {modeOptions.map((option) => (
-                    <button
-                      key={option.mode}
-                      onClick={() => setMode(option.mode)}
-                      className={`w-full text-left px-4 py-3 border font-mono text-xs uppercase tracking-widest transition-colors ${
-                        mode === option.mode
-                          ? "bg-foreground text-background border-foreground"
-                          : "border-foreground/20 hover:border-foreground"
-                      }`}
-                    >
-                      <span className="text-accent mr-2">{mode === option.mode ? "●" : "○"}</span>
-                      {option.label}
-                    </button>
-                  ))}
+                  {modeOptions.map((option) => {
+                    const disabled = option.mode === "watchlist" && importMethod === "username";
+                    return (
+                      <button
+                        key={option.mode}
+                        onClick={() => !disabled && setMode(option.mode)}
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? "El import por username no trae la watchlist — subí tu .zip para usar este modo."
+                            : undefined
+                        }
+                        className={`w-full text-left px-4 py-3 border font-mono text-xs uppercase tracking-widest transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                          mode === option.mode
+                            ? "bg-foreground text-background border-foreground"
+                            : "border-foreground/20 hover:border-foreground"
+                        }`}
+                      >
+                        <span className="text-accent mr-2">{mode === option.mode ? "●" : "○"}</span>
+                        {option.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 {mode === "genres" && (
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -672,6 +786,11 @@ export default function Recommend() {
               </div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mt-3">
                 {result.taste_summary}
+                {refining && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-accent normal-case">
+                    <Loader2 className="w-3 h-3 animate-spin" /> puliendo las razones…
+                  </span>
+                )}
               </p>
             </div>
 

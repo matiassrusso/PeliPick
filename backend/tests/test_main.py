@@ -52,6 +52,12 @@ def _post_zip(
     )
 
 
+def test_health_accepts_get_and_head() -> None:
+    # uptime monitors probe with HEAD by default; GET-only 405s every check
+    assert client.get("/health").status_code == 200
+    assert client.head("/health").status_code == 200
+
+
 def test_recommend_zip_rejects_non_zip_filename() -> None:
     headers = _auth_headers("notazip")
     response = client.post(
@@ -462,6 +468,10 @@ def test_movie_details_returns_cast_and_trailer(monkeypatch) -> None:
     monkeypatch.setattr(
         "backend.app.main.tmdb_client.fetch_trailer_key", lambda tmdb_id, kind: "abc123"
     )
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.fetch_watch_providers",
+        lambda tmdb_id, kind: {"link": "u", "flatrate": [{"name": "Netflix", "logo_path": None}], "rent": [], "buy": []},
+    )
 
     headers = _auth_headers("moviedetails")
     response = client.get("/movies/42/details", headers=headers)
@@ -470,6 +480,27 @@ def test_movie_details_returns_cast_and_trailer(monkeypatch) -> None:
     body = response.json()
     assert body["cast"] == [{"name": "Actor", "character": "Role", "profile_path": None}]
     assert body["trailer_key"] == "abc123"
+    assert body["providers"]["flatrate"][0]["name"] == "Netflix"
+
+
+def test_movie_details_survives_watch_providers_failure(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.fetch_credits",
+        lambda tmdb_id, kind: [{"name": "Actor", "character": "Role", "profile_path": None}],
+    )
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_trailer_key", lambda tmdb_id, kind: None)
+
+    def raise_error(tmdb_id, kind):
+        raise TmdbError("boom")
+
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_watch_providers", raise_error)
+
+    headers = _auth_headers("providerfail")
+    response = client.get("/movies/42/details", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["providers"] is None
 
 
 def test_movie_details_requires_tmdb_configured() -> None:
@@ -691,6 +722,209 @@ def test_recommend_zip_persists_taste_profile_for_reuse(monkeypatch) -> None:
     stored = db.get_taste_profile(db.get_user_by_username("persistprofile")["id"])
     assert stored is not None
     assert stored["genre_breakdown"] == [{"genre": "Acción", "weight": 5.0}]
+
+
+def test_recommend_zip_enforces_daily_rate_limit(monkeypatch) -> None:
+    monkeypatch.setenv("BUTACA_RECOMMEND_DAILY_LIMIT", "2")
+    headers = _auth_headers("ratelimited")
+
+    assert _post_zip(headers).status_code == 200
+    assert _post_zip(headers).status_code == 200
+    assert _post_zip(headers).status_code == 429
+
+
+def test_recommend_rate_limit_is_per_user(monkeypatch) -> None:
+    monkeypatch.setenv("BUTACA_RECOMMEND_DAILY_LIMIT", "1")
+    headers_a = _auth_headers("rluser_a")
+    headers_b = _auth_headers("rluser_b")
+
+    assert _post_zip(headers_a).status_code == 200
+    assert _post_zip(headers_a).status_code == 429
+    # a different user has their own daily counter
+    assert _post_zip(headers_b).status_code == 200
+
+
+def test_admin_stats_404_when_not_configured() -> None:
+    assert client.get("/admin/stats").status_code == 404
+
+
+def test_admin_stats_403_with_wrong_token(monkeypatch) -> None:
+    monkeypatch.setenv("BUTACA_ADMIN_TOKEN", "secret")
+
+    assert client.get("/admin/stats", headers={"X-Admin-Token": "wrong"}).status_code == 403
+
+
+def test_admin_stats_returns_counts(monkeypatch) -> None:
+    monkeypatch.setenv("BUTACA_ADMIN_TOKEN", "secret")
+    headers = _auth_headers("statsuser")
+    picks = _post_zip(headers).json()["recommendations"]
+    client.post(
+        "/feedback",
+        headers=headers,
+        json={"recommendation_id": picks[0]["id"], "status": "interested"},
+    )
+
+    response = client.get("/admin/stats", headers={"X-Admin-Token": "secret"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["users"] >= 1
+    assert body["sessions"]["total"] >= 1
+    assert body["picks_served"] >= 1
+    assert body["feedback"]["interested"] >= 1
+    assert body["feedback"]["total"] >= 1
+    assert "interested" in body["feedback_rate_pct"]
+
+
+def test_recommend_excludes_not_interested_titles_even_on_pool_exhaustion(monkeypatch) -> None:
+    # the whole tiny pool gets recommended on the first call, so the second
+    # call's "already recommended" exclusion empties it and triggers the
+    # retry — the not_interested title must still stay out even then.
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_fetch_candidates(mood: str):
+        return [
+            {"title": "Rejected Pick", "year": 2021, "kind": "movie", "tags": ["dark"]},
+            {"title": "Kept Pick", "year": 2021, "kind": "movie", "tags": ["dark"]},
+        ]
+
+    monkeypatch.setattr("backend.app.main.tmdb_client.fetch_candidates", fake_fetch_candidates)
+
+    headers = _auth_headers("feedbackexclude")
+    picks = _post_zip(headers).json()["recommendations"]
+    rejected = next(item for item in picks if item["title"] == "Rejected Pick")
+    client.post(
+        "/feedback",
+        headers=headers,
+        json={"recommendation_id": rejected["id"], "status": "not_interested"},
+    )
+
+    second_titles = {item["title"] for item in _post_zip(headers).json()["recommendations"]}
+    assert "Rejected Pick" not in second_titles
+    assert "Kept Pick" in second_titles
+
+
+def test_recommend_zip_refine_false_skips_llm(monkeypatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+
+    def boom(ratings, mood, heuristic):
+        raise AssertionError("LLM must not run when refine=0")
+
+    monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", boom)
+
+    headers = _auth_headers("norefine")
+    response = _post_zip(headers, refine="0")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refined"] is False
+    assert body["session_id"] is not None
+
+
+def test_refine_session_applies_llm_and_persists(monkeypatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+    headers = _auth_headers("refinesession")
+    fast = _post_zip(headers, refine="0").json()
+    session_id = fast["session_id"]
+    rec_id = fast["recommendations"][0]["id"]
+
+    def fake_refine(ratings, mood, heuristic):
+        picks = [heuristic.recommendations[0].model_copy(update={"why": "razón del agente"})]
+        return heuristic.model_copy(
+            update={"taste_summary": "resumen del agente", "recommendations": picks}
+        )
+
+    monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", fake_refine)
+
+    response = client.post(f"/recommend/sessions/{session_id}/refine", headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["refined"] is True
+    assert body["taste_summary"] == "resumen del agente"
+    assert body["recommendations"][0]["why"] == "razón del agente"
+
+    # persisted: history reflects the rewritten why + summary
+    sessions = client.get("/history", headers=headers).json()["sessions"]
+    session = next(item for item in sessions if item["id"] == session_id)
+    assert session["taste_summary"] == "resumen del agente"
+    updated = next(item for item in session["recommendations"] if item["id"] == rec_id)
+    assert updated["why"] == "razón del agente"
+
+
+def test_refine_session_404_for_other_user() -> None:
+    owner = _auth_headers("refineowner")
+    intruder = _auth_headers("refineintruder")
+    fast = _post_zip(owner, refine="0").json()
+
+    response = client.post(f"/recommend/sessions/{fast['session_id']}/refine", headers=intruder)
+
+    assert response.status_code == 404
+
+
+def test_refine_session_returns_heuristic_when_llm_fails(monkeypatch) -> None:
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+    headers = _auth_headers("refinefail")
+    fast = _post_zip(headers, refine="0").json()
+
+    def raise_llm(ratings, mood, heuristic):
+        raise LlmError("boom")
+
+    monkeypatch.setattr("backend.app.main.llm_client.refine_recommendations", raise_llm)
+
+    response = client.post(f"/recommend/sessions/{fast['session_id']}/refine", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["refined"] is False
+
+
+def test_recommend_watchlist_mode_400_when_empty() -> None:
+    headers = _auth_headers("emptywatchlist")
+
+    response = _post_zip(headers, mode="watchlist")
+
+    assert response.status_code == 400
+
+
+def test_recommend_watchlist_mode_recommends_from_persisted_watchlist(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+
+    def fake_search(title):
+        return {
+            "tmdb_id": 1,
+            "title": title,
+            "year": 2021,
+            "kind": "movie",
+            "genres": [],
+            "tags": ["dark"],
+            "poster_path": None,
+            "backdrop_path": None,
+            "overview": "",
+            "vote_average": 7.0,
+        }
+
+    # search_title is one shared function object — this single patch covers
+    # both the watchlist match and the taste-profile build path
+    monkeypatch.setattr("backend.app.main.tmdb_client.search_title", fake_search)
+    monkeypatch.setattr(
+        "backend.app.taste_profile.tmdb_client.fetch_taste_credits",
+        lambda tmdb_id, kind: {"director": None, "actors": []},
+    )
+
+    headers = _auth_headers("watchlistmode")
+    watchlist_csv = (
+        "Date,Name,Year,Letterboxd URI\n"
+        "2024-01-01,Dune,2021,https://boxd.it/aaa\n"
+        "2024-01-02,Sicario,2015,https://boxd.it/bbb\n"
+    )
+    _post_zip(headers, zip_files={"ratings.csv": VALID_RATINGS_CSV, "watchlist.csv": watchlist_csv})
+
+    # second import carries no watchlist.csv — mode must use the persisted one
+    response = _post_zip(headers, mode="watchlist")
+
+    assert response.status_code == 200
+    titles = {item["title"] for item in response.json()["recommendations"]}
+    assert titles and titles <= {"Dune", "Sicario"}
 
 
 def test_taste_profile_endpoint_reuses_persisted_profile_without_recomputing(monkeypatch) -> None:

@@ -2,7 +2,7 @@
 
 > Nota: esto es un artefacto de proceso interno (coordinación entre agentes
 > de IA trabajando en paralelo), no documentación de producto. Para
-> entender qué es PeliPick y cómo correrlo, ver [README.md](README.md); para
+> entender qué es Butaca y cómo correrlo, ver [README.md](README.md); para
 > el estado real del producto, ver [docs/mvp-status.md](docs/mvp-status.md).
 
 Coordinación entre agentes trabajando en paralelo sobre este repo, cada uno
@@ -33,6 +33,39 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 
 ## Pending
 
+> Estado al cerrar el 2026-07-20: **nada de lo hecho hoy está commiteado ni
+> deployado.** El working tree tiene las Olas 1-3 del plan de implementación
+> + el rebrand a Butaca + el fix de `/health`, todo junto. 180 tests en verde,
+> build de frontend limpio. Detalle en `docs/build-log.md`.
+
+- [ ] **Revisar y deployar lo acumulado** (bloquea varias cosas de abajo).
+      Al deployar, tener en cuenta:
+      - Si hay alguna env var `PELIPICK_*` seteada a mano en Render,
+        renombrarla a `BUTACA_*` (probablemente ninguna: casi todas usan
+        defaults; la de `render.yaml` ya quedó como `BUTACA_ALLOWED_ORIGINS`).
+      - Los usuarios existentes se van a desloguear una vez (cambió la clave
+        de localStorage `pelipick_token` → `butaca_token`). Trivial.
+- [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
+      solo tiene sentido reactivarlo una vez deployado el fix de `/health`
+      (si no, vuelve a alertar 405 cada 5 min).
+- [ ] **Comprar dominio** (Fase 0.4). Libres al 2026-07-20: `butaca.io`,
+      `butaca.co`, `butaca.me`, `butaca.film`. Tomados: `.com`, `.app`,
+      `.tv`, `.ar`, `.com.ar`.
+- [ ] **Resend** — bloqueado por el dominio. Verificar dominio + setear
+      `RESEND_API_KEY` en Render. Cierra el último pendiente del MVP.
+- [ ] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
+      H (onboarding sin Letterboxd), I (verificación de email + borrar
+      cuenta), J (README — decidir si se reescribe en inglés o se actualiza
+      en español; hoy quedó actualizado solo el nombre).
+- [ ] **Rebrand externo (opcional)** — renombrar los proyectos en Vercel/
+      Render, y recién ahí actualizar las ~6 referencias a
+      `pelipick.vercel.app` / `pelipick-backend.onrender.com` en código y
+      docs. También quedan con el nombre viejo: la carpeta del proyecto
+      (`03 Projects/PeliPick/`) y la lista de proyectos del `CLAUDE.md` raíz
+      del vault (fuera de este repo).
+- [ ] **Borrar el proyecto viejo de Neon** (São Paulo) una vez confirmado
+      que el nuevo (Oregon) anda sin sobresaltos unos días.
+
 ## In Progress
 
 ## Blocked
@@ -40,6 +73,57 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [rebrand-butaca] Rebrand completo **PeliPick → Butaca** | owner: claude |
+      Script de reemplazos ordenados (no sed global, que habría roto las URLs
+      de deploy): `PELIPICK_`→`BUTACA_`, `PeliPick`→`Butaca`,
+      `pelipick-frontend`/`pelipick_token`/`pelipick-theme`/`pelipick.db` →
+      equivalentes con `butaca`. 35 archivos + `.claude/launch.json` +
+      renombrado el archivo físico `backend/pelipick.db` → `butaca.db`.
+      **NO renombrado a propósito:** `pelipick.vercel.app`,
+      `pelipick-backend.onrender.com`, `name: pelipick-backend` de
+      `render.yaml` (identidad real del deploy) y los worktrees históricos.
+      Disponibilidad de dominio chequeada por RDAP: libres `butaca.io/.co/
+      .me/.film`, tomados `.com/.app/.tv/.ar/.com.ar`. 180 tests en verde,
+      build limpio. Detalle en `docs/build-log.md`.
+
+- [x] [health-head-405] Fix de `/health`: devolvía 405 a los monitores de
+      uptime (UptimeRobot prueba con `HEAD`, el endpoint era GET-only) —
+      falso positivo, no una caída. `@app.api_route("/health", methods=["GET",
+      "HEAD"])` + test de regresión | owner: claude | archivos:
+      `backend/app/main.py`, `backend/tests/test_main.py`. 179 → 180 tests.
+
+- [x] [neon-oregon] Migración de la base de Neon `sa-east-1` (São Paulo) a
+      `us-west-2` (Oregon), misma región que el backend en Render — cada
+      query cruzaba de continente | owner: claude | copiado con script
+      `psycopg2` ad-hoc reusando `db.get_connection()` para el schema,
+      verificado por conteo de filas en las 9 tablas con datos. Medido contra
+      producción: login de ~2.85s (baseline São Paulo) a **0.59s**. Proyecto
+      viejo sin borrar como colchón. Detalle en `docs/build-log.md`.
+
+- [x] [release-ola1/2/3] Ejecución de las primeras 3 olas del plan de
+      implementación (`docs/(C) plan-implementacion-codigo.md`). Owner: claude
+      (secuencial, una sesión, sin subagentes). 160 → 179 tests de backend en
+      verde, build de frontend limpio. Detalle completo en
+      `docs/build-log.md` (entrada 2026-07-20 "olas 1-3"). Resumen:
+      - **Ola 1:** warm-up de `/health` (`useAuth.tsx`); rate limiting de
+        `/recommend/*` por usuario + `GET /admin/stats` (`main.py`, `db.py`);
+        feedback loop en el scoring (`recommender.py`, `main.py`, `db.py` —
+        exclusión dura de seen/not_interested + penalización de tags
+        rechazados 2+ veces).
+      - **Ola 2:** modo watchlist (`letterboxd_zip.py::parse_watchlist_titles`,
+        tabla `watchlist_items`, `main.py`, `Recommend.tsx`); "dónde verla"
+        vía `fetch_watch_providers` (`tmdb_client.py`, `models.py`, `main.py`,
+        modal en `Recommend.tsx`); `_search_one` extendido con
+        poster/overview/vote.
+      - **Ola 3:** render progresivo — `refine` form field + endpoint
+        `POST /recommend/sessions/{id}/refine` (`main.py`, `db.py`,
+        `models.py`) + dos fases en `Recommend.tsx`.
+      - Archivos de test tocados: `test_main.py`, `test_recommender.py`,
+        `test_tmdb_client.py`, `test_letterboxd_zip.py` (+19 tests).
+      - **Pendiente (Ola 4, no ejecutado):** onboarding sin Letterboxd (H),
+        verificación email + borrar cuenta (I), README en inglés (J, bloqueado:
+        ya hay `README.md` en español sin prefijo `(C)`).
 
 - [x] [motor-fase1-003/004/005] Cierre de la Fase 1 del motor
       (`docs/(C) plan-de-trabajo.md` §4): los candidatos ahora salen del
@@ -296,7 +380,7 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       por título) y "Recomendadas" (lo ya existente) | owner: codex (3
       intentos por bloqueos de entorno del sandbox — worktree vacío sin
       `.git`, luego worktree hermano fuera del sandbox permitido; el tercer
-      intento con worktree adentro de `PeliPick/.claude/worktrees/` sí pudo
+      intento con worktree adentro de `Butaca/.claude/worktrees/` sí pudo
       escribir el código pero no pudo correr pytest/vite ni commitear por
       permisos del sandbox de Codex — Claude verificó tests+build y
       commiteó por él) | archivos: `backend/app/db.py`
@@ -353,7 +437,7 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       `reset_token` en la respuesta a cualquiera (toma de cuenta completa
       en 3 requests sin tocar el email del usuario) — arreglado en un
       commit aparte (`4b7f80e`), ahora solo se expone con
-      `PELIPICK_DEBUG=1`, nunca por default. También se arregló encoding
+      `BUTACA_DEBUG=1`, nunca por default. También se arregló encoding
       roto (BOM + mojibake por cp1252) en los 10 archivos que tocó
       Codex (commit `a5b4a4e`), sin cambios de comportamiento.
 - [x] [zip-001] Import del `.zip` completo de Letterboxd, reemplaza el CSV

@@ -12,6 +12,7 @@ LIKES_FILE = "likes/films.csv"
 DIARY_FILE = "diary.csv"
 WATCHED_FILE = "watched.csv"
 PROFILE_FILE = "profile.csv"
+WATCHLIST_FILE = "watchlist.csv"
 
 LIKE_RATING = 4.5  # synthetic rating for liked-but-unrated titles
 FAVORITE_RATING = 5.0  # synthetic rating for explicit "Favorite Films"
@@ -35,6 +36,28 @@ def _read_csv(zf: zipfile.ZipFile, name: str) -> list[dict[str, str]]:
 
 def _parse_tags(row: dict[str, str]) -> list[str]:
     return [tag.strip() for tag in row.get("Tags", "").split(",") if tag.strip()]
+
+
+def parse_watchlist_titles(data: bytes) -> list[str]:
+    """Titles from the zip's watchlist.csv (films marked to watch but not yet
+    seen). Parsed separately from parse_letterboxd_zip on purpose: folding it
+    into that function's return tuple would churn every call site and test that
+    unpacks it, for a value only /recommend/zip's watchlist mode needs. Returns
+    [] if the file is absent (older exports) or empty."""
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        return []
+
+    titles: list[str] = []
+    seen: set[str] = set()
+    for row in _read_csv(zf, WATCHLIST_FILE):
+        title = row.get("Name", "").strip()
+        key = _normalize(title)
+        if title and key not in seen:
+            seen.add(key)
+            titles.append(title)
+    return titles
 
 
 def parse_letterboxd_zip(data: bytes) -> tuple[list[RatedItem], set[str], int]:

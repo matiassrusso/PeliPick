@@ -1,5 +1,164 @@
 # Build Log
 
+## 2026-07-20 (rebrand a Butaca + fix de /health para uptime monitors)
+
+### Fix: `/health` devolvía 405 a los monitores de uptime
+
+Al conectar UptimeRobot (Fase 0.3 del plan maestro) el monitor empezó a
+reportar "incident: 405 Method Not Allowed" desde 4 regiones. **Falso
+positivo, no una caída**: UptimeRobot prueba con `HEAD` por default y el
+endpoint estaba declarado como `@app.get("/health")` únicamente, así que
+FastAPI respondía 405 a cualquier HEAD. Confirmado a mano contra producción:
+`GET` → 200, `HEAD` → 405, `POST` → 405. Fix: `@app.api_route("/health",
+methods=["GET", "HEAD"])` en `backend/app/main.py` + test de regresión
+(`test_health_accepts_get_and_head`, primer test que cubría `/health`).
+179 → 180 tests.
+
+Cambiar el método del monitor a GET del lado de UptimeRobot resultó ser
+feature paga, así que **el monitor quedó pausado** hasta que se deploye este
+fix — sin deploy, seguiría alertando falsos positivos cada 5 minutos.
+
+### Rebrand: PeliPick → Butaca
+
+Decisión de producto: "PeliPick" no convencía (claro pero genérico, no
+transmitía la voz editorial/de crítico del producto). Se eligió **Butaca**
+(la butaca del cine): cálido, cinéfilo, alineado con la identidad visual
+"Hybrid critic notebook". Momento deliberado: sin lanzar, con 4 usuarios y
+sin dominio comprado — el punto más barato para renombrar.
+
+Disponibilidad de dominio chequeada vía RDAP (registro oficial, más confiable
+que el buscador de un registrador): `butaca.com`, `.app`, `.tv`, `.net`,
+`.club`, **`.ar` y `.com.ar`** están **tomados** ("butaca" es palabra común,
+registrada hace años). **Libres:** `butaca.io`, `butaca.co`, `butaca.me`,
+`butaca.film`, `butaca.cool`, `butaca.fun`, más los `.com` con prefijo
+(`getbutaca`, `verbutaca`, `butacacine`). Sin comprar todavía.
+
+Rename ejecutado con un script de reemplazos ordenados y específicos (no un
+sed global, que habría roto las URLs de deploy). Reglas aplicadas:
+`PELIPICK_` → `BUTACA_` (env vars), `PeliPick` → `Butaca` (marca),
+`pelipick-frontend` → `butaca-frontend`, `pelipick_token` → `butaca_token`,
+`pelipick-theme` → `butaca-theme`, `pelipick.db` → `butaca.db`. 35 archivos
++ `.claude/launch.json` (editado aparte). El archivo físico
+`backend/pelipick.db` se renombró también, para no perder los datos de dev
+local. 180 tests en verde, build de frontend limpio.
+
+**Deliberadamente NO renombrado** (identidad real del deploy — cambiarlo en
+código sin renombrar antes los proyectos en Vercel/Render rompe CORS y la
+API): `pelipick.vercel.app`, `pelipick-backend.onrender.com`, y el
+`name: pelipick-backend` de `render.yaml`. Esas ~6 referencias se actualizan
+recién *después* de renombrar los proyectos en los dashboards (o de comprar
+un dominio propio y apuntarlo). También se dejaron los nombres históricos de
+worktree (`pelipick-codex`, `pelipick-gemini`) como registro del pasado.
+
+## 2026-07-20 (migración de Neon a la misma región que Render)
+
+Fase 0.1 del plan maestro (`docs/(C) plan-maestro-release.md`): la base de
+Postgres vivía en Neon `sa-east-1` (São Paulo), mientras el backend en Render
+corre en Oregon (US West) — cada query cruzaba de continente. Hallazgo
+concreto: no era "otra región de AWS", era otro continente entero, peor de lo
+que documentaba `architecture.md` hasta ahora (que hablaba de "~400-500ms,
+cross-region" en genérico).
+
+Migración: proyecto Neon nuevo creado en `us-west-2` (Oregon, matchea la
+región de Render), connection string **sin pooling** (el backend ya pooleaba
+conexiones propias vía `ThreadedConnectionPool` en `db.py` — sumar el pooler
+de Neon encima habría sido un intermediario redundante con restricciones de
+PgBouncer transaction-mode sin beneficio real a esta escala). Copiado con un
+script Python ad-hoc (`psycopg2` directo, ya dependencia del proyecto — no
+hizo falta instalar `pg_dump`/`psql`), reusando `backend/app/db.py::
+get_connection()` para crear el schema en el destino con la misma lógica que
+ya corre la app, en vez de duplicar el SQL. Copia tabla por tabla en orden
+FK-safe, preservando IDs y reseteando las secuencias `SERIAL` al final.
+Verificado con conteo de filas por tabla antes de cortar: 4 usuarios, 11
+sesiones, 856 `rated_items`, 4 `recommendation_sessions`, 20 recomendaciones
+servidas, 1 feedback, 1 taste profile — coincidencia exacta en las 9 tablas
+con datos (`watchlist_items` no existía en el origen, tabla nueva de esta
+sesión, aún no deployada en ese momento).
+
+Medido con curl contra producción tras cambiar `DATABASE_URL` en Render:
+login con credenciales inválidas (3 idas a la base: `get_login_attempt`,
+`get_user_by_username`, `save_login_attempt`) pasó de un baseline de ~2.85s
+(login exitoso, 4 idas a la base, medido 2026-07-18 con la base en São Paulo)
+a **0.59s** con la base en Oregon. Proyecto viejo de Neon (São Paulo) se deja
+sin borrar unos días como colchón antes de eliminarlo.
+
+## 2026-07-20 (plan de release, olas 1-3: velocidad, feedback loop, watchlist, providers, render progresivo)
+
+Ejecución de las primeras 3 olas del plan de implementación
+(`docs/(C) plan-implementacion-codigo.md`, compañero de
+`docs/(C) plan-maestro-release.md`). 160 → 179 tests de backend en verde,
+build de frontend limpio en cada ola. Todo secuencial en una sesión (Opus),
+no repartido a subagentes.
+
+### Ola 1 — velocidad y fundaciones
+
+- **Warm-up del backend** (`frontend/src/hooks/useAuth.tsx`): `fetch("/health")`
+  fire-and-forget al montar la app, para que el cold start de Render (~1min)
+  transcurra mientras el usuario mira la landing / tipea el password, en vez
+  de bloquear su primera request real. Cubre al visitante deslogueado (el
+  logueado ya despertaba el backend vía `/auth/me`).
+- **Rate limiting de `/recommend/*` por usuario** (`main.py`, `db.py`): tope
+  diario configurable por `BUTACA_RECOMMEND_DAILY_LIMIT` (default 20, `0`
+  = off), contando `recommendation_sessions` del día actual — sin tabla ni
+  estado en memoria nuevos, sobrevive restarts y multi-proceso. Protege las
+  cuotas de TMDb/NIM antes de abrir al público. 429 al pasarse.
+- **Endpoint de métricas** (`GET /admin/stats`): lee por fin las métricas
+  definidas en `product-mvp.md` (usuarios, sesiones totales/7d/30d, feedback
+  por status y su % sobre picks servidos). Gateado por header
+  `X-Admin-Token` == `BUTACA_ADMIN_TOKEN`; sin esa env el endpoint 404ea
+  (no existe en prod sin setup deliberado), token malo → 403. Sin dashboard,
+  se consulta con curl.
+- **Feedback loop en el scoring** (`recommender.py`, `main.py`, `db.py`): la
+  tabla `feedback` se escribía pero nunca se leía. Ahora `get_feedback_signals`
+  arma las señales y `_finish_recommend` las usa: los títulos marcados
+  `seen`/`not_interested` son exclusión **dura** (no se relaja en el retry de
+  pool agotado, a diferencia de "ya recomendado"), y los tags de los picks
+  rechazados **2+ veces** penalizan el score (`-15 * proporción`; umbral de 2
+  para no fundir un género entero del perfil por un rechazo suelto).
+
+### Ola 2 — calidad del pick
+
+- **Modo watchlist** (`letterboxd_zip.py`, `db.py`, `main.py`,
+  `Recommend.tsx`): cuarto modo "de mi watchlist". `parse_watchlist_titles`
+  lee `watchlist.csv` del zip (función separada a propósito, para no cambiar
+  la aridad del return de `parse_letterboxd_zip` y romper todos los
+  unpackings de tests). Tabla `watchlist_items` (replace-all por import,
+  solo si el zip trae la lista no-vacía). En modo watchlist los candidatos
+  salen de matchear la watchlist contra TMDb (`search_title` en paralelo,
+  cap 60) en vez del discover. El import por username no la trae → se apoya
+  en un zip previo; watchlist vacía → 400 con mensaje claro. En el frontend
+  el modo se deshabilita (con nota) cuando la fuente es username.
+- **"Dónde verla"** (`tmdb_client.py`, `models.py`, `main.py`,
+  `Recommend.tsx`): `fetch_watch_providers` contra `/watch/providers` de TMDb
+  (datos JustWatch), región por `BUTACA_WATCH_REGION` (default AR), cacheado
+  24h. Sección nueva en el modal de detalle con streaming/alquiler/compra y
+  atribución obligatoria a JustWatch; degrade gracioso si falla (el resto del
+  detalle sigue). `_search_one` se extendió para devolver
+  poster/backdrop/overview/vote (los consume el modo watchlist).
+
+### Ola 3 — render progresivo
+
+- **Picks heurísticos al instante, razones del LLM después** (`main.py`,
+  `db.py`, `models.py`, `Recommend.tsx`): los endpoints de recomendación
+  aceptan `refine` (default "1"); el frontend manda `refine=0` y renderiza el
+  heurístico al toque, después llama a `POST /recommend/sessions/{id}/refine`
+  que re-corre el LLM sobre los picks ya servidos, persiste las razones
+  reescritas + el resumen, y devuelve `refined: true` (o `false`, 200 no
+  error, si el LLM no está o falla → el frontend deja el texto heurístico).
+  El frontend parchea `why` + `taste_summary` por id (preserva director y
+  orden, sin migración de schema), con guarda anti-refine-viejo por
+  `session_id`. Indicador discreto "puliendo las razones…" mientras corre.
+  No acelera nada real, pero saca los ~5-15s del LLM del camino crítico del
+  primer render.
+
+### Pendiente de la Ola 4 (no ejecutado en esta sesión)
+
+Onboarding sin Letterboxd (H) y verificación de email + borrar cuenta (I)
+quedan para una próxima sesión (mayor superficie de frontend nuevo, e I está
+acoplado al setup de Resend en curso). README en inglés (J) bloqueado: ya
+existe un `README.md` en español en la raíz (sin prefijo `(C)`), no se pisa
+sin permiso.
+
 ## 2026-07-20 (rediseño de /recommend: showcase, scoring nuevo, fix de regenerado)
 
 ### Botón Home en el nav
@@ -259,7 +418,7 @@ entradas, LRU). 51 tests, todo documentado.
    sin tocar el email de nadie. Estaba documentado como limitación
    temporal (sin proveedor de mail), pero exponerlo así igual era
    inseguro. Fix: `reset_token` ahora solo viaja en la respuesta si
-   `PELIPICK_DEBUG=1` está seteado a mano — nunca por default, nunca en
+   `BUTACA_DEBUG=1` está seteado a mano — nunca por default, nunca en
    producción. Verificado en vivo (con y sin la env var) y con test
    negativo nuevo. Commit `4b7f80e`.
 

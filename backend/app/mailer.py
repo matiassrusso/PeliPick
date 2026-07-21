@@ -7,7 +7,7 @@ from urllib.error import URLError
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 RESEND_URL = "https://api.resend.com/emails"
 REQUEST_TIMEOUT = 10
-DEFAULT_FROM = "PeliPick <onboarding@resend.dev>"
+DEFAULT_FROM = "Butaca <onboarding@resend.dev>"
 DEFAULT_RESET_URL = "https://pelipick.vercel.app/reset-password"
 
 
@@ -53,16 +53,16 @@ def send_password_reset_email(to_email: str, reset_token: str) -> None:
         raise MailError("RESEND_API_KEY no está configurada.")
 
     from_address = os.environ.get("RESEND_FROM_EMAIL", DEFAULT_FROM)
-    reset_url_base = os.environ.get("PELIPICK_RESET_URL", DEFAULT_RESET_URL)
+    reset_url_base = os.environ.get("BUTACA_RESET_URL", DEFAULT_RESET_URL)
     reset_link = f"{reset_url_base}?token={reset_token}"
 
     body = json.dumps(
         {
             "from": from_address,
             "to": [to_email],
-            "subject": "Recuperá tu contraseña de PeliPick",
+            "subject": "Recuperá tu contraseña de Butaca",
             "html": (
-                "<p>Pediste recuperar tu contraseña de PeliPick.</p>"
+                "<p>Pediste recuperar tu contraseña de Butaca.</p>"
                 f'<p><a href="{reset_link}">Hacé click acá para elegir una nueva</a> '
                 "(el link expira en 1 hora).</p>"
                 "<p>Si no fuiste vos, ignorá este mail.</p>"

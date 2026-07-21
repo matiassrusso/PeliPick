@@ -22,7 +22,7 @@ def test_send_password_reset_email_requires_api_key(monkeypatch) -> None:
 
 def test_send_password_reset_email_builds_expected_request(monkeypatch) -> None:
     monkeypatch.setenv("RESEND_API_KEY", "fake-key")
-    monkeypatch.setenv("PELIPICK_RESET_URL", "https://pelipick.vercel.app/reset-password")
+    monkeypatch.setenv("BUTACA_RESET_URL", "https://pelipick.vercel.app/reset-password")
     captured = {}
 
     def fake_send_request(body: bytes, api_key: str) -> None:

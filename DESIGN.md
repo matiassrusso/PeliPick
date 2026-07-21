@@ -1,4 +1,4 @@
-# PeliPick — Design Brief (Crítico Moderno) — histórico, superado
+# Butaca — Design Brief (Crítico Moderno) — histórico, superado
 
 > Generado con [Stitch](https://stitch.withgoogle.com/) a partir del repo y el sitio
 > deployeado, 2026-07-17. Corregido a mano: el original mencionaba Next.js y Vercel AI
@@ -17,7 +17,7 @@
 
 ## 1. Vision & Strategy
 
-PeliPick is a personal movie discovery platform designed for cinephiles who are tired
+Butaca is a personal movie discovery platform designed for cinephiles who are tired
 of generic, algorithm-heavy streaming dashboards. It positions itself as a "Digital
 Cineclub" — a curated, editorial-first experience that prioritizes human-like criteria
 and aesthetic reflection over "content consumption."

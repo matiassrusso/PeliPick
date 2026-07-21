@@ -42,6 +42,10 @@ class RecommendResponse(BaseModel):
     taste_summary: str
     recommendations: list[Recommendation]
     discarded_rows: int = 0
+    session_id: int | None = None
+    # False on the fast (heuristic) response and when the LLM refine failed;
+    # True once the picks have been through the LLM refine step.
+    refined: bool = False
 
 
 class RecommendationSession(BaseModel):
@@ -115,6 +119,9 @@ class CastMember(BaseModel):
 class MovieDetails(BaseModel):
     cast: list[CastMember]
     trailer_key: str | None = None
+    # {"link": str|None, "flatrate": [{"name", "logo_path"}], "rent": [...], "buy": [...]}
+    # from TMDb /watch/providers (JustWatch). None when unavailable/failed.
+    providers: dict | None = None
 
 
 class GenreWeight(BaseModel):

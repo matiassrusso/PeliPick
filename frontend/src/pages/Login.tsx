@@ -59,7 +59,7 @@ export default function Login() {
       <main className="grid grid-cols-1 lg:grid-cols-2 min-h-[calc(100vh-4rem)]">
         <div className="bg-foreground text-background p-12 lg:p-16 flex flex-col justify-between gap-16">
           <div className="font-mono text-[10px] uppercase tracking-widest opacity-60">
-            [Access · PeliPick]
+            [Access · Butaca]
           </div>
           <div>
             <h1 className="text-6xl md:text-7xl xl:text-8xl font-black uppercase tracking-tighter leading-[0.85] mb-8">

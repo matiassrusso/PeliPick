@@ -2,7 +2,7 @@
 
 ## Resumen
 
-Hoy `PeliPick` es una vertical slice local con dos partes:
+Hoy `Butaca` es una vertical slice local con dos partes:
 
 - `frontend` en `React + TypeScript + Vite`
 - `backend` en `FastAPI`
@@ -121,7 +121,7 @@ Piezas actuales:
   recuperación de contraseña con token de un solo uso, hasheado en SQLite,
   que expira a la hora e invalida sesiones viejas al usarse
 - el token de reset **nunca** viaja en la respuesta de `/auth/forgot-password`
-  salvo `PELIPICK_DEBUG=1` — sin eso, cualquiera con un username válido
+  salvo `BUTACA_DEBUG=1` — sin eso, cualquiera con un username válido
   podía tomar la cuenta sin tocar el email del usuario (hallazgo encontrado
   en revisión, arreglado antes de mergear)
 - caché en memoria de `/discover/movie` y `/discover/tv` (TTL 5 min, tope

@@ -29,7 +29,7 @@ export function Footer() {
       <div className="container flex flex-col md:flex-row justify-between items-start gap-12">
         <div className="space-y-8">
           <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-widest opacity-70">
-            <span>PeliPick</span>
+            <span>Butaca</span>
             <span className="opacity-40">—</span>
             <span>para el que mira con criterio</span>
           </div>

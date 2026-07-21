@@ -158,3 +158,23 @@ def test_parse_letterboxd_zip_reports_discarded_rows_from_base_csv() -> None:
 
     assert len(ratings) == 1
     assert discarded == 2
+
+
+def test_parse_watchlist_titles_reads_names_deduped() -> None:
+    watchlist_csv = (
+        "Date,Name,Year,Letterboxd URI\n"
+        "2024-01-01,Dune,2021,https://boxd.it/aaa\n"
+        "2024-01-02,Sicario,2015,https://boxd.it/bbb\n"
+        "2024-01-03, dune ,2021,https://boxd.it/aaa\n"
+    )
+    data = _build_zip({"ratings.csv": RATINGS_CSV, "watchlist.csv": watchlist_csv})
+
+    titles = letterboxd_zip.parse_watchlist_titles(data)
+
+    assert titles == ["Dune", "Sicario"]
+
+
+def test_parse_watchlist_titles_empty_when_file_absent() -> None:
+    data = _build_zip({"ratings.csv": RATINGS_CSV})
+
+    assert letterboxd_zip.parse_watchlist_titles(data) == []

@@ -1,4 +1,4 @@
-# PeliPick — brief completo para rediseño (input para Lovable)
+# Butaca — brief completo para rediseño (input para Lovable)
 
 > Generado por Claude, 2026-07-17. Pensado para pegar en Lovable (o cualquier
 > herramienta de generación de UI) como contexto completo: qué es el producto, qué
@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Qué es PeliPick
+## 1. Qué es Butaca
 
 Motor de recomendaciones de películas y series basado en el **gusto real** de una
 persona (import completo del historial de Letterboxd: ratings, reviews, likes,
@@ -32,7 +32,7 @@ siente que los algoritmos comunes le recomiendan cosas obvias.
 - **Deploy:** frontend en Vercel ([pelipick.vercel.app](https://pelipick.vercel.app/)),
   backend en Render ([pelipick-backend.onrender.com](https://pelipick-backend.onrender.com)).
 - **Tests:** 150 tests de backend, suite completa en verde.
-- **Repo:** [github.com/matiassrusso/PeliPick](https://github.com/matiassrusso/PeliPick)
+- **Repo:** [github.com/matiassrusso/Butaca](https://github.com/matiassrusso/Butaca)
   (público).
 
 ## 3. Pantallas que existen hoy
@@ -144,9 +144,9 @@ protagonista visual, paleta casi monocromática con un solo acento, cero decorac
 sobrante.** Es una estética de "startup de infraestructura/hardware premium" — fría,
 técnica, nocturna.
 
-**Esto es una dirección distinta a la actual de PeliPick** (fondo papel cálido,
+**Esto es una dirección distinta a la actual de Butaca** (fondo papel cálido,
 paleta ámbar/terracota, serif elegante, tono "revista de cine de tarde"). No es
-necesariamente contradictorio — PeliPick podría tomar prestado el recurso de
+necesariamente contradictorio — Butaca podría tomar prestado el recurso de
 "tipografía enorme como protagonista" y el minimalismo de las 3 referencias sin
 necesariamente pasarse a fondo negro — pero es una decisión real de dirección, no un
 detalle menor. Ver la sección de preguntas abiertas al final.

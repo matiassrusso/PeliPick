@@ -1,5 +1,14 @@
 # Estado del MVP
 
+> **Nota al 2026-07-20 (sesión de release):** el proyecto pasó a llamarse
+> **Butaca**. Se sumaron, y están **en el working tree sin commitear ni
+> deployar**: rate limiting de `/recommend/*`, `GET /admin/stats`, feedback
+> loop real en el scoring, modo watchlist, "dónde verla" (watch providers),
+> render progresivo (heurístico al instante + refine del LLM después),
+> warm-up del backend y fix de `/health` para monitores de uptime. Además se
+> migró la base de Neon a Oregon (login 2.85s → 0.59s). 180 tests en verde.
+> Detalle en `docs/build-log.md`; próximos pasos en `TASKS.md` → `Pending`.
+
 ## Ya hecho
 
 - definición de producto base
@@ -26,7 +35,7 @@
 - rate limiting de login (backoff exponencial por username, tope 15 min) y
   recuperación de contraseña (token hasheado en SQLite, expira a la hora,
   invalida sesiones viejas al resetear) — el token solo viaja en la
-  respuesta con `PELIPICK_DEBUG=1`, salvo con Resend configurado (ver abajo)
+  respuesta con `BUTACA_DEBUG=1`, salvo con Resend configurado (ver abajo)
 - envío real del mail de recuperación vía Resend: `users` suma columna
   `email` (nullable, migración vía `_run_migrations` en `backend/app/db.py`
   para instalaciones existentes), registro pasa a pedir email
@@ -39,7 +48,7 @@
   TMDb/LLM). Frontend suma el campo email al registro, un flujo "¿Olvidaste
   tu contraseña?" en `Login.tsx`, y la página `ResetPassword.tsx` que
   consume el link del mail. Verificado end-to-end en local con
-  `PELIPICK_DEBUG=1` (sin Resend real configurado todavía): registro con
+  `BUTACA_DEBUG=1` (sin Resend real configurado todavía): registro con
   email → forgot-password → reset con el token real → login con la
   contraseña nueva. **Pendiente de Matías:** crear la cuenta en Resend y
   setear `RESEND_API_KEY` (local y en Render) — sin dominio propio

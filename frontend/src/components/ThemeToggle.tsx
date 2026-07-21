@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "pelipick-theme";
+const STORAGE_KEY = "butaca-theme";
 
 function getInitial(): "light" | "dark" {
   if (typeof window === "undefined") return "light";

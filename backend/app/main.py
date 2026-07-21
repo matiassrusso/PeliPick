@@ -1,7 +1,10 @@
+import hmac
 import logging
 import os
 import sqlite3
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +21,7 @@ from .models import (
     RatedItem,
     RecommendationHistoryResponse,
     PasswordResetStartResponse,
+    Recommendation,
     RecommendRequest,
     RecommendResponse,
     RegisterRequest,
@@ -28,9 +32,11 @@ from .models import (
 from .recommender import GENRE_OPTIONS, recommend
 
 MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB — real Letterboxd exports run in the tens of KB
-VALID_MODES = {"profile", "recent", "genres"}
+VALID_MODES = {"profile", "recent", "genres", "watchlist"}
 VALID_KIND_FILTERS = {"movie", "series", "both"}
 RECENT_WINDOW = 10  # how many of the user's most-recently-watched titles count as "lo último que vi"
+DEFAULT_RECOMMEND_DAILY_LIMIT = 20  # per user; protects TMDb/NIM quotas. 0 = off.
+WATCHLIST_MATCH_CAP = 60  # how many watchlist titles to resolve against TMDb per request
 
 # ponytail: uvicorn only wires handlers for its own "uvicorn.*" loggers, not
 # root — without this, logger.warning() calls below fall back to Python's
@@ -48,7 +54,48 @@ TASTE_TAG_LOOKUP_CAP = 30
 
 
 def _debug_mode() -> bool:
-    return os.environ.get("PELIPICK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+    return os.environ.get("BUTACA_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _recommend_daily_limit() -> int:
+    raw = os.environ.get("BUTACA_RECOMMEND_DAILY_LIMIT", "").strip()
+    if not raw:
+        return DEFAULT_RECOMMEND_DAILY_LIMIT
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_RECOMMEND_DAILY_LIMIT
+
+
+def _refine_enabled(value: str) -> bool:
+    # default on: only an explicit falsy value turns the LLM refine off (the
+    # frontend passes "0" for the fast first render, then calls the refine
+    # endpoint separately).
+    return value.strip().lower() not in {"0", "false", "no"}
+
+
+def _rebuild_ratings(user_id: int) -> list[RatedItem]:
+    return [
+        RatedItem(
+            title=item["title"],
+            rating=item["rating"],
+            review=item.get("review", ""),
+            watched_date=item.get("watched_date", ""),
+        )
+        for item in db.get_watched_items(user_id)
+    ]
+
+
+def _enforce_recommend_rate_limit(user_id: int) -> None:
+    limit = _recommend_daily_limit()
+    if limit <= 0:
+        return
+    today_start = datetime.now(timezone.utc).strftime("%Y-%m-%d 00:00:00")
+    if db.count_sessions_since(user_id, today_start) >= limit:
+        raise HTTPException(
+            status_code=429,
+            detail="Llegaste al límite de recomendaciones de hoy. Probá de nuevo mañana.",
+        )
 
 
 _DEFAULT_ALLOWED_ORIGINS = [
@@ -58,11 +105,11 @@ _DEFAULT_ALLOWED_ORIGINS = [
 ]
 _ALLOWED_ORIGINS = [
     origin.strip()
-    for origin in os.environ.get("PELIPICK_ALLOWED_ORIGINS", "").split(",")
+    for origin in os.environ.get("BUTACA_ALLOWED_ORIGINS", "").split(",")
     if origin.strip()
 ] or _DEFAULT_ALLOWED_ORIGINS
 
-app = FastAPI(title="PeliPick API")
+app = FastAPI(title="Butaca API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -84,8 +131,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(status_code=500, content={"detail": "Error interno del servidor."})
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health() -> dict[str, str]:
+    # HEAD too: uptime monitors (UptimeRobot et al.) probe with HEAD by
+    # default, and GET-only would 405 every check — a false "down" alert on
+    # a backend that's actually fine.
     return {"status": "ok"}
 
 
@@ -98,6 +148,19 @@ def catalog_stats() -> CatalogStatsResponse:
     except tmdb_client.TmdbError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return CatalogStatsResponse(**stats)
+
+
+@app.get("/admin/stats")
+def admin_stats(x_admin_token: str | None = Header(default=None)) -> dict:
+    # gated by a shared secret in BUTACA_ADMIN_TOKEN. When that env isn't
+    # set (any environment that hasn't opted in) the endpoint 404s as if it
+    # didn't exist, so it's never reachable in prod without deliberate setup.
+    expected = os.environ.get("BUTACA_ADMIN_TOKEN", "").strip()
+    if not expected:
+        raise HTTPException(status_code=404, detail="No encontrado.")
+    if not x_admin_token or not hmac.compare_digest(x_admin_token, expected):
+        raise HTTPException(status_code=403, detail="Token de administrador inválido.")
+    return db.get_admin_stats()
 
 
 @app.post("/auth/register", response_model=AuthResponse, status_code=201)
@@ -263,6 +326,25 @@ def _enrich_loved_ratings_with_genre_tags(ratings: list[RatedItem]) -> None:
             item.tags = list(item.tags) + match["tags"]
 
 
+def _watchlist_candidates(titles: list[str]) -> list[dict]:
+    """Resolve the user's Letterboxd watchlist titles to TMDb candidates so
+    recommend() can rank them by taste, instead of pulling fresh discover
+    results. Parallel like _enrich_loved_ratings_with_genre_tags — these are
+    blocking network calls, not CPU work."""
+    if not tmdb_client.is_configured() or not titles:
+        return []
+
+    def _match(title: str) -> dict | None:
+        try:
+            return tmdb_client.search_title(title)
+        except tmdb_client.TmdbError:
+            return None
+
+    with ThreadPoolExecutor(max_workers=taste_profile.MATCH_WORKERS) as pool:
+        results = pool.map(_match, titles[:WATCHLIST_MATCH_CAP])
+    return [match for match in results if match]
+
+
 def _finish_recommend(
     ratings: list[RatedItem],
     extra_seen: set[str],
@@ -272,10 +354,16 @@ def _finish_recommend(
     genres: str,
     user: sqlite3.Row,
     discarded_rows: int = 0,
+    refine: bool = True,
 ) -> RecommendResponse:
     """Shared tail of both /recommend/zip and /recommend/letterboxd: once a
     source has produced (ratings, extra_seen), the rest of the flow —
-    candidates, exclusion, scoring, LLM refine, persistence — is identical."""
+    candidates, exclusion, scoring, LLM refine, persistence — is identical.
+    refine=False skips the (slow) LLM step and returns the heuristic picks
+    immediately; the frontend then calls /recommend/sessions/{id}/refine to
+    swap in the LLM-written reasons without blocking the first render."""
+    _enforce_recommend_rate_limit(user["id"])
+
     if not ratings:
         raise HTTPException(
             status_code=400,
@@ -307,16 +395,45 @@ def _finish_recommend(
             logger.warning("Taste profile computation failed, falling back to unpersonalized candidates", exc_info=True)
             profile = None
 
-    candidates = catalog.CATALOG
-    if tmdb_client.is_configured():
-        try:
-            if profile and profile.get("genre_breakdown"):
-                candidates = tmdb_client.fetch_personalized_candidates(profile, mood, kind_filter)
-            else:
-                candidates = tmdb_client.fetch_candidates(mood)
-        except tmdb_client.TmdbError as exc:
-            logger.warning("TMDb candidates fetch failed, falling back to mock catalog: %s", exc)
-            candidates = catalog.CATALOG
+    if mode == "watchlist":
+        # recommend FROM the user's Letterboxd watchlist instead of discover.
+        # The list is persisted per import; username imports don't carry one,
+        # so this leans on a previously imported zip.
+        watchlist = db.get_watchlist_items(user["id"])
+        if not watchlist:
+            raise HTTPException(
+                status_code=400,
+                detail="Tu watchlist está vacía. Importá el zip de Letterboxd (el import por username no la trae).",
+            )
+        candidates = _watchlist_candidates(watchlist)
+        if not candidates:
+            raise HTTPException(
+                status_code=400,
+                detail="No pude matchear tu watchlist contra el catálogo de TMDb.",
+            )
+    else:
+        candidates = catalog.CATALOG
+        if tmdb_client.is_configured():
+            try:
+                if profile and profile.get("genre_breakdown"):
+                    candidates = tmdb_client.fetch_personalized_candidates(profile, mood, kind_filter)
+                else:
+                    candidates = tmdb_client.fetch_candidates(mood)
+            except tmdb_client.TmdbError as exc:
+                logger.warning("TMDb candidates fetch failed, falling back to mock catalog: %s", exc)
+                candidates = catalog.CATALOG
+
+    # explicit feedback is a hard exclusion, unlike "already recommended"
+    # (relaxed on retry below): a title the user marked seen or not_interested
+    # must never resurface, so fold it into extra_seen up front. The tags of
+    # not_interested picks feed a scoring penalty in recommend().
+    feedback = db.get_feedback_signals(user["id"])
+    extra_seen = set(extra_seen) | set(feedback["seen_titles"]) | {
+        item["title"] for item in feedback["not_interested"]
+    }
+    rejected_tags: Counter[str] = Counter()
+    for item in feedback["not_interested"]:
+        rejected_tags.update(item["tags"])
 
     # exclude titles already recommended to this user before, so hitting
     # "nuevos picks" and regenerating with the same source+mood surfaces
@@ -351,6 +468,7 @@ def _finish_recommend(
         required_any_tags=required_any_tags or None,
         preference_ratings=preference_ratings,
         profile=profile,
+        rejected_tags=rejected_tags or None,
     )
 
     # the "don't repeat what I already recommended" exclusion can exhaust a
@@ -369,11 +487,14 @@ def _finish_recommend(
             required_any_tags=required_any_tags or None,
             preference_ratings=preference_ratings,
             profile=profile,
+            rejected_tags=rejected_tags or None,
         )
 
-    if llm_client.is_configured():
+    refined = False
+    if refine and llm_client.is_configured():
         try:
             response = llm_client.refine_recommendations(ratings, mood, response)
+            refined = True
         except llm_client.LlmError as exc:
             logger.warning("LLM refine failed, falling back to heuristic why: %s", exc)
 
@@ -388,13 +509,16 @@ def _finish_recommend(
         item.id = new_id
 
     response.discarded_rows = discarded_rows
+    response.session_id = session_id
+    response.refined = refined
     logger.info(
-        "recommend done user=%s mode=%s kind=%s personalized=%s llm=%s picks=%d discarded_rows=%d",
+        "recommend done user=%s mode=%s kind=%s personalized=%s llm=%s refined=%s picks=%d discarded_rows=%d",
         user["id"],
         mode,
         kind_filter,
         bool(profile),
         llm_client.is_configured(),
+        refined,
         len(response.recommendations),
         discarded_rows,
     )
@@ -407,6 +531,7 @@ async def recommend_titles_from_zip(
     mode: str = Form("profile"),
     kind_filter: str = Form("both"),
     genres: str = Form(""),
+    refine: str = Form("1"),
     file: UploadFile = File(...),
     user: sqlite3.Row = Depends(auth.get_current_user),
 ) -> RecommendResponse:
@@ -424,8 +549,16 @@ async def recommend_titles_from_zip(
     except letterboxd_zip.ZipParseError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # persist this import's watchlist so "watchlist" mode (this request or a
+    # later one) has it. Only overwrite when non-empty, so an export missing
+    # the file — or an emptied list — doesn't silently wipe a good one.
+    watchlist_titles = letterboxd_zip.parse_watchlist_titles(data)
+    if watchlist_titles:
+        db.save_watchlist_items(user["id"], watchlist_titles)
+
     return _finish_recommend(
-        ratings, extra_seen, mood, mode, kind_filter, genres, user, discarded_rows
+        ratings, extra_seen, mood, mode, kind_filter, genres, user, discarded_rows,
+        refine=_refine_enabled(refine),
     )
 
 
@@ -436,6 +569,7 @@ def recommend_titles_from_letterboxd(
     mode: str = Form("profile"),
     kind_filter: str = Form("both"),
     genres: str = Form(""),
+    refine: str = Form("1"),
     user: sqlite3.Row = Depends(auth.get_current_user),
 ) -> RecommendResponse:
     _validate_recommend_params(mode, kind_filter)
@@ -445,7 +579,50 @@ def recommend_titles_from_letterboxd(
     except letterboxd_scrape.ScrapeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    return _finish_recommend(ratings, extra_seen, mood, mode, kind_filter, genres, user)
+    return _finish_recommend(
+        ratings, extra_seen, mood, mode, kind_filter, genres, user, refine=_refine_enabled(refine)
+    )
+
+
+@app.post("/recommend/sessions/{session_id}/refine", response_model=RecommendResponse)
+def refine_session(
+    session_id: int, user: sqlite3.Row = Depends(auth.get_current_user)
+) -> RecommendResponse:
+    """Second half of progressive rendering: re-run the LLM refine over a
+    session's already-served heuristic picks and persist the rewritten
+    reasons. Returns refined=False (200, not an error) when the LLM isn't
+    configured or fails, so the frontend just keeps the heuristic text."""
+    session = db.get_recommendation_session(session_id, user["id"])
+    if session is None:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+
+    rec_rows = db.get_session_recommendations(session_id, user["id"])
+    recommendations = [Recommendation(**row) for row in rec_rows]
+    heuristic = RecommendResponse(
+        taste_summary=session["taste_summary"],
+        recommendations=recommendations,
+        session_id=session_id,
+    )
+
+    if not llm_client.is_configured() or not recommendations:
+        return heuristic
+
+    try:
+        refined = llm_client.refine_recommendations(
+            _rebuild_ratings(user["id"]), session["mood"], heuristic
+        )
+    except llm_client.LlmError as exc:
+        logger.warning("Session refine failed, returning heuristic: %s", exc)
+        return heuristic
+
+    db.update_session_refinement(
+        session_id,
+        refined.taste_summary,
+        [(rec.id, rec.why) for rec in refined.recommendations if rec.id is not None],
+    )
+    refined.session_id = session_id
+    refined.refined = True
+    return refined
 
 
 @app.get("/movies/{tmdb_id}/details", response_model=MovieDetails)
@@ -461,7 +638,14 @@ def movie_details(
     except tmdb_client.TmdbError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return MovieDetails(cast=cast, trailer_key=trailer_key)
+    # providers is a nice-to-have; a failure here shouldn't sink the whole
+    # detail response — same graceful degrade as the rest of the modal.
+    try:
+        providers = tmdb_client.fetch_watch_providers(tmdb_id, kind=kind)
+    except tmdb_client.TmdbError:
+        providers = None
+
+    return MovieDetails(cast=cast, trailer_key=trailer_key, providers=providers)
 
 
 @app.post("/feedback", status_code=201)

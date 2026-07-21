@@ -144,6 +144,7 @@ _SEARCH_CACHE: OrderedDict[str, tuple[float, dict | None]] = OrderedDict()
 _TASTE_CREDITS_CACHE: OrderedDict[tuple[str, int], tuple[float, dict]] = OrderedDict()
 _PERSON_CACHE: OrderedDict[str, tuple[float, int | None]] = OrderedDict()
 _PERSONALIZED_CACHE: OrderedDict[tuple, tuple[float, list[dict]]] = OrderedDict()
+_WATCH_PROVIDERS_CACHE: OrderedDict[tuple[str, int, str], tuple[float, dict]] = OrderedDict()
 # single entry, not keyed — there's only one "the catalog" to count
 _CATALOG_STATS_CACHE_TTL_SECONDS = 24 * 60 * 60
 _catalog_stats_cache: tuple[float, dict] | None = None
@@ -397,6 +398,61 @@ def fetch_trailer_key(tmdb_id: int, kind: str = "movie") -> str | None:
     return trailers[0]["key"]
 
 
+def _watch_region() -> str:
+    return os.environ.get("BUTACA_WATCH_REGION", "AR").strip().upper() or "AR"
+
+
+def fetch_watch_providers(tmdb_id: int, kind: str = "movie") -> dict:
+    """Streaming/rent/buy availability for one title in the configured region
+    (default AR), from TMDb's /watch/providers (data sourced from JustWatch —
+    attribution is required and rendered in the frontend). Cached a day, same
+    OrderedDict TTL+LRU idiom as the other caches in this module."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    region = _watch_region()
+    cache_key = (kind, tmdb_id, region)
+    cached = _WATCH_PROVIDERS_CACHE.get(cache_key)
+    if cached is not None:
+        expires_at, result = cached
+        if expires_at > _now_monotonic():
+            _WATCH_PROVIDERS_CACHE.move_to_end(cache_key)
+            return result
+        # .pop(..., None) not del: the detail modal can open concurrently, so
+        # another request may have already evicted this expired key.
+        _WATCH_PROVIDERS_CACHE.pop(cache_key, None)
+
+    endpoint = _tmdb_endpoint_kind(kind)
+    url = f"https://api.themoviedb.org/3/{endpoint}/{tmdb_id}/watch/providers?api_key={api_key}"
+    data = _get_json(url)
+    region_data = (data.get("results") or {}).get(region) or {}
+
+    def _providers(offer_type: str) -> list[dict]:
+        return [
+            {"name": p["provider_name"], "logo_path": _image_url(p.get("logo_path"), "w92")}
+            for p in sorted(
+                region_data.get(offer_type, []), key=lambda p: p.get("display_priority", 999)
+            )
+            if p.get("provider_name")
+        ]
+
+    result = {
+        "link": region_data.get("link"),
+        "flatrate": _providers("flatrate"),
+        "rent": _providers("rent"),
+        "buy": _providers("buy"),
+    }
+    _WATCH_PROVIDERS_CACHE[cache_key] = (
+        _now_monotonic() + TITLE_CACHE_TTL_SECONDS,
+        result,
+    )
+    _WATCH_PROVIDERS_CACHE.move_to_end(cache_key)
+    while len(_WATCH_PROVIDERS_CACHE) > TITLE_CACHE_MAX_ENTRIES:
+        _WATCH_PROVIDERS_CACHE.popitem(last=False)
+    return result
+
+
 def _search_one(
     url: str,
     kind: str,
@@ -425,6 +481,9 @@ def _search_one(
     genre_ids = raw.get("genre_ids", [])
     genres = sorted({genre_name_map[gid] for gid in genre_ids if gid in genre_name_map})
     tags = sorted({tag for gid in genre_ids for tag in genre_tag_map.get(gid, [])})
+    # poster/overview/vote were added so a title matched from a Letterboxd
+    # watchlist can be shown as a real pick (recommender.py reads these);
+    # existing callers just ignore the extra keys.
     return {
         "tmdb_id": raw.get("id"),
         "title": (raw.get(title_field) or "").strip(),
@@ -432,6 +491,10 @@ def _search_one(
         "kind": kind,
         "genres": genres,
         "tags": tags,
+        "poster_path": _image_url(raw.get("poster_path"), "w500"),
+        "backdrop_path": _image_url(raw.get("backdrop_path"), "w780"),
+        "overview": raw.get("overview") or "",
+        "vote_average": raw.get("vote_average"),
     }
 
 

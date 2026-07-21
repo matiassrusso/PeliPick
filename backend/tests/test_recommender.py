@@ -1,3 +1,5 @@
+from collections import Counter
+
 from backend.app.models import RatedItem
 from backend.app.recommender import GENRE_OPTIONS, capitalize_sentence, recommend
 
@@ -366,6 +368,31 @@ def test_recommend_reserves_one_exploration_slot_even_when_outscored_by_profile_
     titles = {item.title for item in response.recommendations}
     assert "Exploration Pick" in titles
     assert len(response.recommendations) == 6
+
+
+def test_recommend_penalizes_tags_rejected_twice() -> None:
+    catalog = [
+        {"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]},
+        {"title": "Light Pick", "year": 2020, "kind": "movie", "tags": ["light"]},
+    ]
+
+    response = recommend(ratings=[], mood="", catalog=catalog, rejected_tags=Counter({"dark": 2}))
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["Light Pick"].match_score > by_title["Dark Pick"].match_score
+
+
+def test_recommend_ignores_tag_rejected_only_once() -> None:
+    # a single "no me interesa" shouldn't blacklist a whole tag — needs 2+
+    catalog = [
+        {"title": "Dark Pick", "year": 2020, "kind": "movie", "tags": ["dark"]},
+        {"title": "Light Pick", "year": 2020, "kind": "movie", "tags": ["light"]},
+    ]
+
+    response = recommend(ratings=[], mood="", catalog=catalog, rejected_tags=Counter({"dark": 1}))
+
+    by_title = {item.title: item for item in response.recommendations}
+    assert by_title["Dark Pick"].match_score == by_title["Light Pick"].match_score == 50
 
 
 def test_recommend_untagged_catalog_items_default_to_profile_source() -> None:

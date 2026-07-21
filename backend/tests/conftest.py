@@ -5,9 +5,9 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_db(tmp_path):
-    os.environ["PELIPICK_DB_PATH"] = str(tmp_path / "test.db")
+    os.environ["BUTACA_DB_PATH"] = str(tmp_path / "test.db")
     yield
-    os.environ.pop("PELIPICK_DB_PATH", None)
+    os.environ.pop("BUTACA_DB_PATH", None)
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +31,6 @@ def no_real_resend(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_debug_mode(monkeypatch):
-    # a dev machine may have PELIPICK_DEBUG=1 set locally; tests that rely on
+    # a dev machine may have BUTACA_DEBUG=1 set locally; tests that rely on
     # the token NOT being exposed by default must not depend on that.
-    monkeypatch.delenv("PELIPICK_DEBUG", raising=False)
+    monkeypatch.delenv("BUTACA_DEBUG", raising=False)

@@ -14,7 +14,7 @@
 
 ### 2. CORS cerrado
 - `backend/app/main.py` ya no usa `allow_origins=["*"]`. Ahora lista explícita vía env
-  var `PELIPICK_ALLOWED_ORIGINS` (default: dominio de Vercel + localhost de dev).
+  var `BUTACA_ALLOWED_ORIGINS` (default: dominio de Vercel + localhost de dev).
   Seteado en `render.yaml`. Commit `805a1ab`.
 
 ### 3. Persistencia migrada a Postgres (Neon)
@@ -111,7 +111,7 @@
   `RESEND_API_KEY` está seteada, degrade gracioso si no. Frontend: campo
   email en registro, flujo "¿Olvidaste tu contraseña?" en `Login.tsx`,
   página nueva `ResetPassword.tsx`. Verificado end-to-end en local con
-  `PELIPICK_DEBUG=1` (registro → forgot → reset con token real → login con
+  `BUTACA_DEBUG=1` (registro → forgot → reset con token real → login con
   la contraseña nueva). 158 tests en verde. **Sigue pendiente de Matías:**
   crear la cuenta de Resend, setear `RESEND_API_KEY`, y conseguir un dominio
   propio verificado (sin eso Resend solo manda al mail de la cuenta dueña de

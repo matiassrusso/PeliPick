@@ -20,7 +20,7 @@ export function Navbar() {
   return (
     <nav className="sticky top-0 z-50 flex items-center justify-between px-6 py-4 bg-background/70 backdrop-blur-xl border-b border-foreground/5">
       <Link to="/" className="font-mono text-xs tracking-widest font-medium uppercase">
-        PeliPick <span className="text-accent">//</span> Cineclub
+        Butaca <span className="text-accent">//</span> Cineclub
       </Link>
 
       <div className="flex gap-8 font-mono text-[10px] tracking-widest uppercase items-center">

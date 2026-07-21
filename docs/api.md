@@ -85,7 +85,7 @@ de otro desde afuera. Sin eso, cualquiera podía pedir el reset de cualquier
 usuario y tomar la cuenta sin tocar su email.
 
 `reset_token` solo viaja en la respuesta si el backend corre con
-`PELIPICK_DEBUG=1` en `backend/.env` — para poder probar el flujo de punta a
+`BUTACA_DEBUG=1` en `backend/.env` — para poder probar el flujo de punta a
 punta en local sin un proveedor de mail configurado. **Nunca debe estar
 seteado en producción.** Cuando haya proveedor de mail real, este debug
 override se saca y el token se manda solo por email.
@@ -381,8 +381,8 @@ no filtrar esa info).
 
 ## Notas
 
-- persistencia en SQLite (`backend/pelipick.db`, path configurable con
-  `PELIPICK_DB_PATH`)
+- persistencia en SQLite (`backend/butaca.db`, path configurable con
+  `BUTACA_DB_PATH`)
 - passwords con PBKDF2-HMAC-SHA256 + salt, sin librerías extra
 - reset de contraseña con token efímero persistido en SQLite, todavía sin
   integración de email real

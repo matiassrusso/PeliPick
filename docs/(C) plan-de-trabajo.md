@@ -1,4 +1,4 @@
-# (C) Plan de trabajo — próxima etapa de PeliPick
+# (C) Plan de trabajo — próxima etapa de Butaca
 
 > **Creado:** 2026-07-16 · **Autor:** Claude (Opus 4.8) · **Estado:** propuesto, esperando luz verde
 > Documento vivo. Se actualiza a medida que avanzan las fases. Para el estado real del producto ver [mvp-status.md](mvp-status.md); para producto/MVP ver [product-mvp.md](product-mvp.md); para arquitectura ver [architecture.md](architecture.md).
@@ -9,10 +9,10 @@ Este plan sale de una lectura completa del repo (todos los commits, los 8 docs, 
 
 ## 1. Diagnóstico (el hallazgo central)
 
-PeliPick tiene **mucha infraestructura sólida** (auth + reset + rate limiting, caché TMDb, import zip robusto, historial, perfil visual, cadena de fallback de Gemini, 128 tests) construida **alrededor de un motor de recomendación que es el eslabón más débil** y que hoy no puede personalizar mucho. Dos causas verificadas en el código:
+Butaca tiene **mucha infraestructura sólida** (auth + reset + rate limiting, caché TMDb, import zip robusto, historial, perfil visual, cadena de fallback de Gemini, 128 tests) construida **alrededor de un motor de recomendación que es el eslabón más débil** y que hoy no puede personalizar mucho. Dos causas verificadas en el código:
 
 1. **Los candidatos no dependen del usuario.** `main.py:217` → `tmdb_client.fetch_candidates(mood)` trae el top global de TMDb por `vote_average` (con `vote_count ≥ 200`), filtrado a lo sumo por **un** género si el mood coincide con uno de 4. Dos usuarios con gustos opuestos reciben casi el mismo pool base (Padrino, Parasite, Interstellar…).
-2. **El matching es un vocabulario de ~20 tags coarse, por substring en inglés.** La señal de gusto sale de escanear reviews buscando literalmente `"slow"`, `"action"`, `"funny"`. Sin reviews (o en español), el vector de gusto queda casi vacío, todo scorea ~50 y el orden final ≈ `vote_average` de TMDb. Es decir: para el usuario típico, **PeliPick ≈ "las mejores de TMDb que todavía no viste"**.
+2. **El matching es un vocabulario de ~20 tags coarse, por substring en inglés.** La señal de gusto sale de escanear reviews buscando literalmente `"slow"`, `"action"`, `"funny"`. Sin reviews (o en español), el vector de gusto queda casi vacío, todo scorea ~50 y el orden final ≈ `vote_average` de TMDb. Es decir: para el usuario típico, **Butaca ≈ "las mejores de TMDb que todavía no viste"**.
 
 Gemini reordena y reescribe el *why*, pero está atado a ese pool → puede explicar lindo un pick genérico. Es exactamente el **"Riesgo 3: explicaciones humo"** que ya estaba anotado en `product-mvp.md`.
 
@@ -34,7 +34,7 @@ Respuestas de Matías (2026-07-16):
 
 | Pregunta | Respuesta |
 |---|---|
-| ¿Para qué querés PeliPick ahora? | **Las dos por igual** — producto real *y* portfolio |
+| ¿Para qué querés Butaca ahora? | **Las dos por igual** — producto real *y* portfolio |
 | ¿Cómo sentís hoy los picks? | **A veces sí, a veces no** (inconsistente) |
 | ¿Qué de lo hecho revisar? | **Las 4**: import username, perfil visual, agente Gemini, diseño heredado (Manus) |
 | ¿Cuánto meterle al motor? | **A fondo** — candidatos derivados del gusto real |
@@ -89,13 +89,13 @@ Implicancia: el foco es el **motor** (Fase 1), pero como portfolio también pesa
 
 Backend → **Render**, frontend → **Vercel** (stack estándar de Matías). Deployeado 2026-07-16: [pelipick.vercel.app](https://pelipick.vercel.app/) + [pelipick-backend.onrender.com](https://pelipick-backend.onrender.com).
 
-**CORS cerrado (2026-07-16):** `allow_origins=["*"]` reemplazado por lista explícita (`PELIPICK_ALLOWED_ORIGINS` en `render.yaml`, default incluye el dominio de Vercel + localhost de dev). Ver `backend/app/main.py`.
+**CORS cerrado (2026-07-16):** `allow_origins=["*"]` reemplazado por lista explícita (`BUTACA_ALLOWED_ORIGINS` en `render.yaml`, default incluye el dominio de Vercel + localhost de dev). Ver `backend/app/main.py`.
 
 **Persistencia cerrada (2026-07-16):** el plan free de Render tiene **filesystem efímero** (confirmado en docs de Render) y los discos persistentes no existen ahí (hace falta plan Starter $7/mes). Supabase free se pausa a la semana de inactividad. Matías no quería pagar nada recurrente, así que se eligió **Neon** (Postgres serverless, plan free permanente, sin tarjeta, sin expiración por tiempo — solo el compute hace scale-to-zero a los 5 min de inactividad, sin borrar datos).
 
 `backend/app/db.py` ahora soporta los dos backends vía la env var `DATABASE_URL`: sin setear, sigue usando SQLite exactamente como antes (dev local y los 150 tests, sin cambios); seteada, usa Postgres. Detalle: dos DDL (`SCHEMA_SQLITE`/`SCHEMA_POSTGRES`), un wrapper chico (`_PostgresConnWrapper`) que traduce `?`→`%s` y expone `execute`/`executemany`/`commit`/`close` para que los ~25 helpers de abajo no se enteren de la diferencia, y `_last_insert_id` para los 3 INSERTs que necesitaban `cursor.lastrowid` (Postgres no lo tiene — usan `RETURNING id`). Nueva dependencia: `psycopg2-binary`. `render.yaml` suma `DATABASE_URL` (`sync: false`, se carga a mano en el dashboard de Render con el connection string de Neon).
 
-Pendiente: el envío real de mail para reset de password (hoy el token no llega al usuario sin `PELIPICK_DEBUG=1`).
+Pendiente: el envío real de mail para reset de password (hoy el token no llega al usuario sin `BUTACA_DEBUG=1`).
 
 ---
 

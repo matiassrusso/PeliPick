@@ -2,13 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "pelipick-frontend",
+      "name": "butaca-frontend",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "cd /d frontend && npm run dev -- --host 127.0.0.1 --port 4173"],
       "port": 4173
     },
     {
-      "name": "pelipick-backend",
+      "name": "butaca-backend",
       "runtimeExecutable": "cmd",
       "runtimeArgs": ["/c", "py -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8001"],
       "port": 8001

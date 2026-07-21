@@ -2,10 +2,10 @@ import json
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "pelipick.db"
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "butaca.db"
 
 SCHEMA_SQLITE = """
 CREATE TABLE IF NOT EXISTS users (
@@ -86,6 +86,12 @@ CREATE TABLE IF NOT EXISTS taste_profiles (
     user_id INTEGER PRIMARY KEY REFERENCES users(id),
     profile_json TEXT NOT NULL,
     computed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    title TEXT NOT NULL
 );
 """
 
@@ -174,11 +180,17 @@ CREATE TABLE IF NOT EXISTS taste_profiles (
     profile_json TEXT NOT NULL,
     computed_at TEXT NOT NULL DEFAULT ({_PG_NOW})
 );
+
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    title TEXT NOT NULL
+);
 """
 
 
 def _db_path() -> str:
-    return os.environ.get("PELIPICK_DB_PATH", str(DEFAULT_DB_PATH))
+    return os.environ.get("BUTACA_DB_PATH", str(DEFAULT_DB_PATH))
 
 
 def _database_url() -> str | None:
@@ -259,7 +271,7 @@ def _last_insert_id(conn, cursor):
 _PG_POOL = None  # psycopg2.pool.ThreadedConnectionPool, created lazily on first use
 
 # ponytail: keyed by target (db path, or the Postgres URL) rather than a
-# bare bool — tests point PELIPICK_DB_PATH at a fresh tmp file per test, so a
+# bare bool — tests point BUTACA_DB_PATH at a fresh tmp file per test, so a
 # single global flag would skip schema creation for every db after the first.
 # Harmless if two threads race this at cold start: CREATE TABLE IF NOT EXISTS
 # is idempotent, worst case is redundant work once, not a correctness bug.
@@ -478,6 +490,20 @@ def create_recommendation_session(user_id: int, mood: str, taste_summary: str) -
         return _last_insert_id(conn, cursor)
 
 
+def count_sessions_since(user_id: int, since: str) -> int:
+    # created_at is a lexicographically-sortable "YYYY-MM-DD HH:MM:SS" UTC
+    # string in both backends, so a plain string >= comparison is a correct
+    # datetime comparison — no datetime() / date functions needed (those
+    # differ between SQLite and Postgres). AS n aliases COUNT(*) so the row
+    # reads the same via sqlite3.Row and psycopg2's RealDictCursor.
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM recommendation_sessions WHERE user_id = ? AND created_at >= ?",
+            (user_id, since),
+        ).fetchone()
+    return row["n"]
+
+
 def save_recommendations(session_id: int, user_id: int, mood: str, items: list[dict]) -> list[int]:
     ids: list[int] = []
     with get_connection() as conn:
@@ -578,6 +604,60 @@ def get_recommendation_history(user_id: int) -> list[dict]:
     ]
 
 
+def get_recommendation_session(session_id: int, user_id: int) -> dict | None:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id, mood, taste_summary FROM recommendation_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id),
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def get_session_recommendations(session_id: int, user_id: int) -> list[dict]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, tmdb_id, title, year, kind, why, match_score, tags,
+                   poster_path, backdrop_path, overview, vote_average
+            FROM recommendations_served
+            WHERE session_id = ? AND user_id = ?
+            ORDER BY id ASC
+            """,
+            (session_id, user_id),
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "tmdb_id": row["tmdb_id"],
+            "title": row["title"],
+            "year": row["year"],
+            "kind": row["kind"],
+            "why": row["why"],
+            "match_score": row["match_score"],
+            "tags": json.loads(row["tags"]),
+            "poster_path": row["poster_path"],
+            "backdrop_path": row["backdrop_path"],
+            "overview": row["overview"],
+            "vote_average": row["vote_average"],
+        }
+        for row in rows
+    ]
+
+
+def update_session_refinement(
+    session_id: int, taste_summary: str, why_by_id: list[tuple[int, str]]
+) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE recommendation_sessions SET taste_summary = ? WHERE id = ?",
+            (taste_summary, session_id),
+        )
+        for rec_id, why in why_by_id:
+            conn.execute(
+                "UPDATE recommendations_served SET why = ? WHERE id = ?", (why, rec_id)
+            )
+
+
 def get_recommendation(recommendation_id: int, user_id: int) -> sqlite3.Row | None:
     with get_connection() as conn:
         return conn.execute(
@@ -592,6 +672,85 @@ def save_feedback(user_id: int, recommendation_id: int, status: str) -> None:
             "INSERT INTO feedback (user_id, recommendation_id, status) VALUES (?, ?, ?)",
             (user_id, recommendation_id, status),
         )
+
+
+def get_feedback_signals(user_id: int) -> dict:
+    """Latest feedback per recommendation for this user, split into what
+    recommend() consumes: titles marked seen/not_interested (excluded from
+    future picks) and the tags of not_interested picks (penalized in scoring).
+    'interested' is stored but not a signal here."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT feedback.recommendation_id, feedback.status,
+                   recommendations_served.title, recommendations_served.tags
+            FROM feedback
+            JOIN recommendations_served
+                ON recommendations_served.id = feedback.recommendation_id
+            WHERE feedback.user_id = ?
+            ORDER BY feedback.id ASC
+            """,
+            (user_id,),
+        ).fetchall()
+
+    # a user can re-submit feedback for the same pick; ASC order + overwrite
+    # keeps the most recent verdict per recommendation
+    latest: dict[int, dict] = {}
+    for row in rows:
+        latest[row["recommendation_id"]] = {
+            "status": row["status"],
+            "title": row["title"],
+            "tags": json.loads(row["tags"]),
+        }
+
+    seen_titles: list[str] = []
+    not_interested: list[dict] = []
+    for entry in latest.values():
+        if entry["status"] == "seen":
+            seen_titles.append(entry["title"])
+        elif entry["status"] == "not_interested":
+            not_interested.append({"title": entry["title"], "tags": entry["tags"]})
+    return {"seen_titles": seen_titles, "not_interested": not_interested}
+
+
+def get_admin_stats() -> dict:
+    """Aggregate counts for the metrics defined in docs/product-mvp.md. All
+    COUNTs aliased AS n and all date cutoffs done by string comparison on
+    created_at, so the same SQL runs on SQLite and Postgres."""
+    now = datetime.now(timezone.utc)
+    since_7 = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+    since_30 = (now - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection() as conn:
+        users = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()["n"]
+        sessions_total = conn.execute(
+            "SELECT COUNT(*) AS n FROM recommendation_sessions"
+        ).fetchone()["n"]
+        sessions_7 = conn.execute(
+            "SELECT COUNT(*) AS n FROM recommendation_sessions WHERE created_at >= ?", (since_7,)
+        ).fetchone()["n"]
+        sessions_30 = conn.execute(
+            "SELECT COUNT(*) AS n FROM recommendation_sessions WHERE created_at >= ?", (since_30,)
+        ).fetchone()["n"]
+        picks_served = conn.execute("SELECT COUNT(*) AS n FROM recommendations_served").fetchone()["n"]
+        feedback_rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM feedback GROUP BY status"
+        ).fetchall()
+
+    feedback = {row["status"]: row["n"] for row in feedback_rows}
+    counts = {status: feedback.get(status, 0) for status in ("interested", "not_interested", "seen")}
+    counts["total"] = sum(counts.values())
+    rate = {
+        status: (round(100 * counts[status] / picks_served, 1) if picks_served else 0.0)
+        for status in ("interested", "not_interested", "seen")
+    }
+    return {
+        "users": users,
+        "sessions": {"total": sessions_total, "last_7_days": sessions_7, "last_30_days": sessions_30},
+        "picks_served": picks_served,
+        "feedback": counts,
+        "feedback_rate_pct": rate,
+    }
 
 
 def save_taste_profile(user_id: int, profile: dict) -> None:
@@ -620,3 +779,24 @@ def get_taste_profile(user_id: int) -> dict | None:
             "SELECT profile_json FROM taste_profiles WHERE user_id = ?", (user_id,)
         ).fetchone()
     return json.loads(row["profile_json"]) if row is not None else None
+
+
+def save_watchlist_items(user_id: int, titles: list[str]) -> None:
+    # replace-all: a freshly imported watchlist IS the current state, so wipe
+    # the old rows and reinsert rather than trying to diff.
+    with get_connection() as conn:
+        conn.execute("DELETE FROM watchlist_items WHERE user_id = ?", (user_id,))
+        if titles:
+            conn.executemany(
+                "INSERT INTO watchlist_items (user_id, title) VALUES (?, ?)",
+                [(user_id, title) for title in titles],
+            )
+
+
+def get_watchlist_items(user_id: int) -> list[str]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT title FROM watchlist_items WHERE user_id = ? ORDER BY id ASC",
+            (user_id,),
+        ).fetchall()
+    return [row["title"] for row in rows]

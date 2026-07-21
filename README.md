@@ -1,4 +1,4 @@
-# PeliPick
+# Butaca
 
 Motor de recomendaciones de pelis y series basado en el gusto real de una persona, no en promedios genéricos.
 
