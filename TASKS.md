@@ -40,12 +40,24 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 > proyectos, no se borró nada). Ver Done de hoy (`domain-001`) para el
 > detalle completo.
 
+- [ ] 🔴 **Setear `NVIDIA_API_KEY` en Render** — **el agente de IA nunca corrió
+      en producción.** Al migrar de Gemini a NVIDIA NIM se cambió el nombre de
+      la variable en el código (`llm_client.py` lee `NVIDIA_API_KEY`) pero en
+      Render quedó la vieja `GEMINI_API_KEY`. Los dos call sites hacían
+      fallback mudo al heurístico, así que no se notó: todos los "why" de
+      producción vienen del heurístico, no del modelo. El logging ya está
+      arreglado (`c477d5c`); falta la key. La `GEMINI_API_KEY` vieja ya se
+      borró de Render.
+- [ ] 🔴 **Rotar credenciales** — el 2026-07-21 se pegó el export completo de
+      env vars de Render en un chat con un agente de IA. Rotar al menos:
+      password de Neon (`DATABASE_URL`), `RESEND_API_KEY`, `TMDB_API_KEY`.
+- [ ] **Borrar el usuario de prueba `test-resend-qa`** (creado hoy vía API
+      para probar el mail real, con el mail de Matías). No hay endpoint de
+      borrar cuenta todavía — sale con la Ola 4 (tarea I) o a mano por SQL
+      contra Neon.
 - [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
       solo tiene sentido reactivarlo una vez confirmado el fix de `/health`
       en producción (si no, vuelve a alertar 405 cada 5 min).
-- [ ] **Resend** — ya desbloqueado por el dominio. Crear cuenta, verificar
-      `butaca.xyz`, y setear `RESEND_API_KEY` en Render. Cierra el último
-      pendiente del MVP.
 - [ ] **Activar auto-renew de `butaca.xyz`** en Namecheap antes de que venza
       (21 de julio de 2027) — hoy está apagado a propósito para no llevarse
       un cargo sorpresa, pero eso también significa que se pierde el dominio
@@ -68,6 +80,49 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [resend-001] **Resend activado end-to-end** | owner: claude + Matías |
+      Dominio `butaca.xyz` verificado en Resend (región `us-east-1`, la misma
+      costa que Render, mismo criterio que la migración de Neon). DNS en
+      Namecheap: `TXT resend._domainkey` (DKIM), `TXT send` (SPF) y
+      `MX send` → `feedback-smtp.us-east-1.amazonses.com`. El SPF de Resend
+      va en el subdominio `send`, así que no chocó con el SPF de email
+      forwarding que Namecheap tenía en `@` — igual ese se borró solo al
+      pasar Mail Settings a **Custom MX** (necesario para poder cargar el MX).
+      **Bug real encontrado y arreglado (`42a9a3f`):** la API de Resend está
+      detrás de Cloudflare, que rechazaba el `User-Agent` default de urllib
+      (`Python-urllib/3.x`) con `403 error code: 1010` — no era la key ni el
+      dominio. Con cualquier UA propio pasa; **no** hizo falta `curl_cffi`
+      como en `letterboxd_scrape.py` (ahí el bloqueo era por fingerprint TLS,
+      acá es solo el header). Verificado contra la API real con una key falsa:
+      sin UA da 1010, con UA da el 401 de auth esperado. Test de regresión
+      agregado (180 → 182 tests).
+      **Dos fallbacks mudos arreglados en el camino** (`e224297`, `c477d5c`),
+      que eran la razón de que nada de esto se viera: `/auth/forgot-password`
+      no logueaba nada si `RESEND_API_KEY` faltaba, y el `MailError` se comía
+      el body de la respuesta HTTP (que es donde Resend explica el motivo);
+      el refine del LLM devolvía el heurístico sin loguear si faltaba la key.
+      Ese segundo caso destapó el bug de `NVIDIA_API_KEY` (ver `Pending`).
+
+- [x] [render-dup-001] **Servicio duplicado en Render, borrado** | owner:
+      claude | Al pushear el `render.yaml` actualizado, el Blueprint "PeliPick"
+      buscó un servicio llamado `pelipick-backend` (el nombre que dice el
+      yaml), no lo encontró porque Matías había renombrado el servicio real a
+      `butaca-backend` en el dashboard, y **creó uno nuevo desde cero**
+      (`srv-d9fs564ab06s73fr8620`, url `pelipick-backend-k36q.onrender.com`).
+      Nacía roto: solo tomaba las 2 env vars que el yaml define con `value:`,
+      sin `DATABASE_URL` ni API keys (las `sync: false` quedan vacías), y
+      consumía horas del free tier — que según el plan maestro alcanza para
+      exactamente un servicio. Es el riesgo exacto que se había documentado en
+      `rebrand-externo-001` y que motivó no tocar el campo `name:` del yaml.
+      Borrado el servicio duplicado **y el Blueprint** (el servicio real sigue
+      auto-deployando desde GitHub igual; `render.yaml` queda en el repo solo
+      como documentación de qué variables hacen falta). También se borraron
+      del servicio real dos env vars muertas: `GEMINI_API_KEY` y
+      `PELIPICK_ALLOWED_ORIGINS` (ninguna se lee en el código, verificado).
+      Nota de proceso: esto se hizo vía la **API REST de Render**, con la key
+      en una env var de usuario de Windows (`RENDER_API_KEY`, leída del
+      registro en cada llamada) para no exponerla en el chat.
 
 - [x] [domain-001] Comprado `butaca.xyz` (Namecheap, $1,58 el año 1 + $0,20
       ICANN fee, sin auto-renew) y configurado de punta a punta como dominio
