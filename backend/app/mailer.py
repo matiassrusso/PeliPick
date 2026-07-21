@@ -9,6 +9,7 @@ RESEND_URL = "https://api.resend.com/emails"
 REQUEST_TIMEOUT = 10
 DEFAULT_FROM = "Butaca <onboarding@resend.dev>"
 DEFAULT_RESET_URL = "https://butaca.xyz/reset-password"
+USER_AGENT = "Butaca/1.0"
 
 
 class MailError(Exception):
@@ -37,7 +38,15 @@ def _send_request(body: bytes, api_key: str) -> None:
     request = urllib.request.Request(
         RESEND_URL,
         data=body,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            # Sin esto Cloudflare (delante de la API de Resend) corta con 403
+            # "error code: 1010" por el User-Agent default de urllib. Cualquier
+            # UA propio alcanza — no hace falta imitar un browser como en
+            # letterboxd_scrape.py, ahí el bloqueo era por fingerprint TLS.
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
     try:
