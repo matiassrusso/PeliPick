@@ -3,215 +3,136 @@ import pytest
 from backend.app import letterboxd_scrape as ls
 
 
-def _diary_row(slug: str, title: str, date: str, rating: int | None = None, viewing_index: int | None = None) -> str:
-    href_suffix = f"{viewing_index}/" if viewing_index else ""
-    rating_span = f'<span class="rating rated-{rating}"> stars </span>' if rating else '<span class="rating "> </span>'
-    year, month, day = date.split("-")
+def _item(
+    title: str,
+    *,
+    rating: str | None = None,
+    watched: str = "2026-01-15",
+    rewatch: str = "No",
+    like: str = "No",
+) -> str:
+    rating_tag = f"<letterboxd:memberRating>{rating}</letterboxd:memberRating>" if rating else ""
     return (
-        '<tr class="diary-entry-row">'
-        f'<a class="daydate" href="/user/diary/films/for/{year}/{month}/{day}/">{day}</a>'
-        f'<h2 class="primaryname prettify"><a href="/user/film/{slug}/{href_suffix}">{title}</a></h2>'
-        f"{rating_span}"
-        "</tr>"
+        "<item>"
+        f"<title>{title}</title>"
+        f"<letterboxd:filmTitle>{title}</letterboxd:filmTitle>"
+        f"<letterboxd:watchedDate>{watched}</letterboxd:watchedDate>"
+        f"<letterboxd:rewatch>{rewatch}</letterboxd:rewatch>"
+        f"<letterboxd:memberLike>{like}</letterboxd:memberLike>"
+        f"{rating_tag}"
+        "</item>"
     )
 
 
-def _diary_page(*rows: str) -> str:
-    return "<table>" + "".join(rows) + "</table>"
+def _feed(*items: str) -> str:
+    return (
+        "<?xml version='1.0' encoding='utf-8'?>"
+        '<rss version="2.0" xmlns:letterboxd="https://letterboxd.com">'
+        "<channel>" + "".join(items) + "</channel></rss>"
+    )
 
 
-def test_parse_diary_page_extracts_rating_and_date() -> None:
-    page = _diary_page(_diary_row("goodfellas", "GoodFellas", "2024-09-28", rating=10))
-
-    entries = ls._parse_diary_page(page)
+def test_parse_feed_extracts_rating_and_watched_date() -> None:
+    entries = ls._parse_feed(_feed(_item("GoodFellas", rating="5.0", watched="2024-09-28")))
 
     assert entries == [
-        {"slug": "goodfellas", "title": "GoodFellas", "watched_date": "2024-09-28", "rating": 5.0}
+        {"title": "GoodFellas", "rating": 5.0, "watched_date": "2024-09-28", "liked": False}
     ]
 
 
-def test_parse_diary_page_handles_unrated_entry() -> None:
-    page = _diary_page(_diary_row("taxi-driver", "Taxi Driver", "2024-09-28"))
+def test_parse_feed_skips_non_film_items() -> None:
+    # Las listas publicadas también salen en el feed, pero sin filmTitle.
+    feed = _feed(
+        "<item><title>Mi top 10 de 2026</title></item>",
+        _item("Heat", rating="4.5"),
+    )
 
-    entries = ls._parse_diary_page(page)
+    entries = ls._parse_feed(feed)
+
+    assert [e["title"] for e in entries] == ["Heat"]
+
+
+def test_parse_feed_handles_unrated_entry() -> None:
+    entries = ls._parse_feed(_feed(_item("Taxi Driver")))
 
     assert entries[0]["rating"] is None
 
 
-def test_parse_diary_page_handles_rewatch_url_suffix() -> None:
-    page = _diary_page(_diary_row("passages", "Passages", "2024-01-01", viewing_index=2))
+def test_fetch_diary_uses_like_as_rating_when_unrated(monkeypatch) -> None:
+    monkeypatch.setattr(ls, "_fetch_feed", lambda username: _feed(_item("Weekend", like="Yes")))
 
-    entries = ls._parse_diary_page(page)
+    ratings, extra_seen = ls.fetch_letterboxd_diary("someone")
 
-    assert entries[0]["slug"] == "passages"
-
-
-def test_fetch_letterboxd_diary_requires_username(monkeypatch: pytest.MonkeyPatch) -> None:
-    with pytest.raises(ls.ScrapeError):
-        ls.fetch_letterboxd_diary("  ")
+    assert [(r.title, r.rating) for r in ratings] == [("Weekend", ls.LIKE_RATING)]
+    assert extra_seen == set()
 
 
-def test_fetch_letterboxd_diary_raises_for_unknown_username(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ls, "_fetch_html", lambda url: None)
+def test_fetch_diary_sends_unrated_unliked_to_extra_seen(monkeypatch) -> None:
+    monkeypatch.setattr(ls, "_fetch_feed", lambda username: _feed(_item("Dune")))
 
-    with pytest.raises(ls.ScrapeError):
-        ls.fetch_letterboxd_diary("nosuchuser")
+    ratings, extra_seen = ls.fetch_letterboxd_diary("someone")
 
-
-def test_fetch_letterboxd_diary_raises_when_diary_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ls, "_fetch_html", lambda url: _diary_page())
-
-    with pytest.raises(ls.ScrapeError):
-        ls.fetch_letterboxd_diary("newuser")
+    assert ratings == []
+    assert extra_seen == {"dune"}
 
 
-def test_fetch_letterboxd_diary_splits_rated_and_unrated_into_ratings_and_extra_seen(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    page1 = _diary_page(
-        _diary_row("goodfellas", "GoodFellas", "2024-09-28", rating=10),
-        _diary_row("passages", "Passages", "2024-01-01"),
-    )
+def test_fetch_diary_gives_rewatch_bonus_for_repeated_titles(monkeypatch) -> None:
+    feed = _feed(_item("Casino", rating="4.0"), _item("Casino", rating="4.0", rewatch="Yes"))
+    monkeypatch.setattr(ls, "_fetch_feed", lambda username: feed)
 
-    def fake_fetch(url: str) -> str | None:
-        return page1 if "page/1/" in url else None
+    ratings, _ = ls.fetch_letterboxd_diary("someone")
 
-    monkeypatch.setattr(ls, "_fetch_html", fake_fetch)
-
-    ratings, extra_seen = ls.fetch_letterboxd_diary("someuser")
-
-    assert [item.title for item in ratings] == ["GoodFellas"]
-    assert ratings[0].rating == 5.0
-    assert ratings[0].watched_date == "2024-09-28"
-    assert extra_seen == {"passages"}
+    assert [(r.title, r.rating) for r in ratings] == [("Casino", 4.0 + ls.REWATCH_BONUS)]
 
 
-def test_fetch_letterboxd_diary_applies_rewatch_bonus_on_repeat_entries(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    page1 = _diary_page(
-        _diary_row("goodfellas", "GoodFellas", "2024-09-28", rating=8, viewing_index=2),
-        _diary_row("goodfellas", "GoodFellas", "2020-01-01", rating=8),
-    )
+def test_fetch_diary_caps_rewatch_bonus_at_five(monkeypatch) -> None:
+    feed = _feed(*[_item("Heat", rating="5.0") for _ in range(4)])
+    monkeypatch.setattr(ls, "_fetch_feed", lambda username: feed)
 
-    def fake_fetch(url: str) -> str | None:
-        return page1 if "page/1/" in url else None
-
-    monkeypatch.setattr(ls, "_fetch_html", fake_fetch)
-
-    ratings, _ = ls.fetch_letterboxd_diary("someuser")
-
-    assert len(ratings) == 1
-    assert ratings[0].rating == 4.5  # 4.0 base + 0.5 rewatch bonus
-    assert ratings[0].watched_date == "2024-09-28"  # first (most recent) occurrence wins
-
-
-def test_fetch_letterboxd_diary_caps_rewatch_bonus_at_five(monkeypatch: pytest.MonkeyPatch) -> None:
-    page1 = _diary_page(
-        *[_diary_row("goodfellas", "GoodFellas", "2024-01-01", rating=10, viewing_index=i) for i in range(1, 6)]
-    )
-
-    monkeypatch.setattr(ls, "_fetch_html", lambda url: page1 if "page/1/" in url else None)
-
-    ratings, _ = ls.fetch_letterboxd_diary("someuser")
+    ratings, _ = ls.fetch_letterboxd_diary("someone")
 
     assert ratings[0].rating == 5.0
 
 
-def test_fetch_letterboxd_diary_paginates_until_empty_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    page1 = _diary_page(_diary_row("film-a", "Film A", "2024-02-01", rating=10))
-    page2 = _diary_page(_diary_row("film-b", "Film B", "2024-01-01", rating=8))
-    calls = []
-
-    def fake_fetch(url: str) -> str | None:
-        calls.append(url)
-        if "page/1/" in url:
-            return page1
-        if "page/2/" in url:
-            return page2
-        return _diary_page()
-
-    monkeypatch.setattr(ls, "_fetch_html", fake_fetch)
-
-    ratings, _ = ls.fetch_letterboxd_diary("someuser")
-
-    assert {item.title for item in ratings} == {"Film A", "Film B"}
-    assert len(calls) == 3  # stops at the first empty page
+def test_fetch_diary_rejects_empty_username() -> None:
+    with pytest.raises(ls.ScrapeError):
+        ls.fetch_letterboxd_diary("   ")
 
 
-def test_fetch_letterboxd_diary_stops_at_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    full_page = _diary_page(_diary_row("film-a", "Film A", "2024-02-01", rating=10))
-    calls = []
-
-    def fake_fetch(url: str) -> str | None:
-        calls.append(url)
-        return full_page
-
-    monkeypatch.setattr(ls, "_fetch_html", fake_fetch)
-    monkeypatch.setattr(ls, "MAX_DIARY_PAGES", 3)
-
-    ls.fetch_letterboxd_diary("someuser")
-
-    assert len(calls) == 3
-
-
-def test_fetch_html_wraps_network_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    from curl_cffi.requests.exceptions import ConnectionError as CurlConnectionError
-
-    def raise_connection_error(url, impersonate, timeout):
-        raise CurlConnectionError("boom")
-
-    monkeypatch.setattr(ls.curl_requests, "get", raise_connection_error)
+def test_fetch_diary_errors_when_feed_has_no_films(monkeypatch) -> None:
+    monkeypatch.setattr(ls, "_fetch_feed", lambda username: _feed())
 
     with pytest.raises(ls.ScrapeError):
-        ls._fetch_html("https://letterboxd.com/someuser/diary/films/page/1/")
+        ls.fetch_letterboxd_diary("someone")
 
 
-def test_fetch_html_wraps_non_404_error_statuses(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FakeResponse:
-        status_code = 500
-        ok = False
-        text = ""
-        headers: dict[str, str] = {}
+def test_fetch_feed_maps_404_to_unknown_user(monkeypatch) -> None:
+    def raise_404(*args, **kwargs):
+        raise ls.HTTPError("https://letterboxd.com/nadie/rss/", 404, "Not Found", {}, None)
 
-    monkeypatch.setattr(ls.curl_requests, "get", lambda url, impersonate, timeout: FakeResponse())
+    monkeypatch.setattr(ls.urllib.request, "urlopen", raise_404)
+
+    with pytest.raises(ls.ScrapeError, match="No encontré"):
+        ls._fetch_feed("nadie")
+
+
+def test_fetch_feed_sets_user_agent(monkeypatch) -> None:
+    # Sin User-Agent propio Cloudflare corta con 403 — se rompe solo en
+    # producción, nunca en los tests mockeados.
+    captured = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured["headers"] = request.headers
+        raise ls.URLError("stop here")
+
+    monkeypatch.setattr(ls.urllib.request, "urlopen", fake_urlopen)
 
     with pytest.raises(ls.ScrapeError):
-        ls._fetch_html("https://letterboxd.com/someuser/diary/films/page/1/")
+        ls._fetch_feed("someone")
+
+    assert captured["headers"].get("User-agent") == ls.USER_AGENT
 
 
-def test_fetch_html_logs_cloudflare_error_code(monkeypatch, caplog) -> None:
-    # Distinguir 1010 (fingerprint, arreglable) de 1006/1015 (IP baneada) es lo
-    # único que dice si el bloqueo se puede resolver en código.
-    class BlockedResponse:
-        status_code = 403
-        ok = False
-        text = "<html>Access denied | error code: 1006</html>"
-        headers = {"cf-ray": "abc123-EZE"}
-
-    monkeypatch.setattr(ls.curl_requests, "get", lambda url, impersonate, timeout: BlockedResponse())
-
-    with caplog.at_level("WARNING"):
-        with pytest.raises(ls.ScrapeError):
-            ls._fetch_html("https://letterboxd.com/someuser/diary/films/page/1/")
-
-    assert "cf_error=1006" in caplog.text
-    assert "abc123-EZE" in caplog.text
-
-
-def test_fetch_html_403_points_user_to_the_zip(monkeypatch) -> None:
-    # Cloudflare le sirve un challenge de JS a las IPs de datacenter, así que
-    # en producción esta vía siempre falla — el mensaje tiene que ofrecer la
-    # alternativa que sí funciona en vez de un código de error crudo.
-    class ChallengeResponse:
-        status_code = 403
-        ok = False
-        text = "<html><title>Just a moment...</title></html>"
-        headers = {"cf-ray": "x-PDX", "server": "cloudflare"}
-
-    monkeypatch.setattr(
-        ls.curl_requests, "get", lambda url, impersonate, timeout: ChallengeResponse()
-    )
-
-    with pytest.raises(ls.ScrapeError, match="zip"):
-        ls._fetch_html("https://letterboxd.com/someuser/diary/films/page/1/")
+def test_parse_feed_wraps_malformed_xml() -> None:
+    with pytest.raises(ls.ScrapeError):
+        ls._parse_feed("<rss><channel><item>roto")

@@ -1,40 +1,54 @@
-# Import por username de Letterboxd (scraping)
+# Import por username de Letterboxd (feed RSS)
 
-> ## ⚠️ No funciona en producción (verificado 2026-07-21)
+> **Historia:** hasta el 2026-07-21 esto scrapeaba el HTML del diario con
+> `curl_cffi`. Funcionaba en dev local pero **siempre daba 403 en
+> producción**: Cloudflare le sirve un challenge de JavaScript
+> ("Just a moment...") a las IPs de datacenter como la de Render, y sin un
+> browser no se puede resolver. No era el fingerprint TLS — `curl_cffi` ya
+> pasaba esa parte — sino la reputación de IP. Confirmado en logs de prod:
+> `cf_ray=...-PDX, server=cloudflare`, sin código numérico de error.
 >
-> Cloudflare le sirve un **challenge de JavaScript** ("Just a moment...") a
-> las requests que salen de la IP de datacenter de Render, y devuelve 403.
-> Desde una IP residencial (dev local) pasa sin problema, con el mismo código
-> y la misma versión de `curl_cffi`.
->
-> **No es un problema de fingerprint TLS** — `curl_cffi` sigue haciendo bien
-> su trabajo, eso ya lo pasa. Lo que pesa es la reputación de IP en el bot
-> score de Cloudflare. Confirmado en los logs de producción:
-> `cf_ray=...-PDX, server=cloudflare` + body `"Just a moment..."`, sin código
-> numérico de error (no es un ban de IP, es un challenge).
->
-> **Por qué no se arregla:** resolver el challenge requiere ejecutar JS, o sea
-> un browser headless en el backend — inviable en el free tier de Render
-> (512MB) y frágil igual. Un proxy residencial cuesta plata y agrava el tema
-> de los ToS de Letterboxd, que ya está marcado como riesgo en
-> `docs/(C) plan-maestro-release.md`.
->
-> **Estado actual:** el endpoint devuelve un mensaje que manda al usuario al
-> import por `.zip`, que es el camino robusto y no depende de nada de esto.
-> El código se deja como está porque sigue funcionando en dev local.
+> Se reemplazó por el **feed RSS público** que Letterboxd ofrece por perfil,
+> que es un canal oficial (lo recomiendan ellos mismos en la página de la
+> API), sale con `urllib` pelado y no pasa por el challenge. De paso se pudo
+> **borrar la dependencia `curl_cffi`**, que existía solo para este scraping.
 
 ## Qué soporta hoy
 
 Alternativa a subir el `.zip` de Letterboxd: `POST /recommend/letterboxd`
-recibe un `username` público y scrapea su diario
-(`https://letterboxd.com/<username>/diary/films/page/N/`), paginando hasta
-20 páginas (~2000 entradas) o hasta encontrar una página vacía.
+recibe un `username` público y lee `https://letterboxd.com/<username>/rss/`.
 
-Por cada entrada de diario extrae: título, fecha real de visto, y rating (si
-lo tiene). Un mismo título repetido en el diario (rewatch) suma +0.5 al
-rating existente (mismo bonus que el `Rewatch=Yes` del zip), tope 5.0.
-Títulos vistos pero nunca puntuados se excluyen de las recomendaciones sin
-sumar señal de gusto (equivalente a `watched.csv`).
+Por cada entrada de película extrae: título, rating del miembro, fecha real
+de visto, y si le puso like. Un mismo título repetido en el feed (rewatch)
+suma +0.5 al rating existente (mismo bonus que el `Rewatch=Yes` del zip),
+tope 5.0. Un título con like pero sin puntuar entra con rating sintético
+4.5, igual que `likes/films.csv` en el zip. Títulos vistos sin puntuar ni
+likear se excluyen de las recomendaciones sin sumar señal de gusto
+(equivalente a `watched.csv`).
+
+Los items que no son de película (listas publicadas) vienen sin `filmTitle`
+y se descartan.
+
+## Límite real: solo actividad reciente
+
+El feed expone alrededor de 50 entradas, no el historial completo. Medido
+contra el perfil público de `scorsese` el 2026-07-21:
+
+| | Scraper viejo (en local) | RSS |
+|---|---|---|
+| Entradas leídas | ~2000 (20 páginas) | 56 |
+| Con rating | 254 | 19 (10 puntuadas + 9 likes) |
+| Likes | no accesibles | sí |
+| Id de TMDb | no | sí (`tmdb:movieId`) |
+
+O sea: el RSS es más rico **por entrada** pero mucho más corto. Para un
+perfil de gusto completo el `.zip` sigue siendo el camino recomendado; el
+username es un atajo ("no tengo el zip a mano ahora").
+
+> Nota: el feed trae `tmdb:movieId` ya resuelto por entrada, que hoy **no se
+> está usando** — el flujo sigue matcheando por título contra TMDb como con
+> el zip. Aprovecharlo ahorraría requests y evitaría errores de matcheo, pero
+> pedía tocar el pipeline compartido, así que quedó afuera de este cambio.
 
 ## Por qué solo el diario
 
