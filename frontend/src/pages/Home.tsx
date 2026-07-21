@@ -201,11 +201,19 @@ export default function Home() {
         </motion.div>
       </section>
 
-      {/* Marquee — directors ticker */}
-      <div className="border-b-2 border-foreground bg-foreground text-background py-5 overflow-hidden">
-        <div className="flex gap-16 whitespace-nowrap animate-marquee font-serif italic text-2xl md:text-3xl">
+      {/* Marquee — directors ticker. Decorativo: los nombres se repiten para el
+          loop, así que no aporta nada a un lector de pantalla. */}
+      <div
+        aria-hidden="true"
+        className="border-b-2 border-foreground bg-foreground text-background py-5 overflow-hidden"
+      >
+        {/* El separador va como padding de cada item, no como gap del contenedor:
+            con gap, el ancho total es (2n items + 2n-1 gaps) y el -50% de la
+            animación no cae en la costura entre las dos copias — de ahí el
+            salto visible cada vuelta. */}
+        <div className="flex whitespace-nowrap animate-marquee font-serif italic text-2xl md:text-3xl">
           {[...MARQUEE_DIRECTORS, ...MARQUEE_DIRECTORS].map((name, i) => (
-            <span key={i} className="flex items-center gap-16">
+            <span key={i} className="flex items-center gap-16 pr-16">
               {name}
               <span className="text-accent">✦</span>
             </span>
