@@ -10,7 +10,7 @@ import {
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8001";
 const TOKEN_KEY = "butaca_token";
 
-type User = { username: string };
+type User = { username: string; email: string | null; emailVerified: boolean };
 
 type AuthState = {
   user: User | null;
@@ -21,6 +21,7 @@ type AuthState = {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, email: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -55,7 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return response.json();
       })
       .then((data) => {
-        if (!cancelled) setUser({ username: data.username });
+        if (!cancelled)
+          setUser({
+            username: data.username,
+            email: data.email ?? null,
+            emailVerified: Boolean(data.email_verified),
+          });
       })
       .catch(() => {
         if (!cancelled) {
@@ -91,7 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       localStorage.setItem(TOKEN_KEY, body.token);
-      setUser({ username: body.username });
+      // minimal until the /auth/me effect (fired by setToken) fills in email +
+      // verification status
+      setUser({ username: body.username, email: null, emailVerified: false });
       setToken(body.token);
     },
     [],
@@ -120,6 +128,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, [token]);
 
+  const deleteAccount = useCallback(
+    async (password: string) => {
+      if (!token) return;
+      const response = await fetch(`${API_BASE_URL}/auth/account`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ password }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.detail ?? "No pude borrar la cuenta.");
+      }
+      // account (and its session) are gone server-side; clear locally too
+      localStorage.removeItem(TOKEN_KEY);
+      setToken(null);
+      setUser(null);
+    },
+    [token],
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -131,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        deleteAccount,
       }}
     >
       {children}

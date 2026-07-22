@@ -72,10 +72,11 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       un cargo sorpresa, pero eso también significa que se pierde el dominio
       si nadie lo renueva a mano.
 - [ ] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
-      ~~H (onboarding sin Letterboxd)~~ ✅ hecho (ver `onboarding-001` en Done),
-      I (verificación de email + borrar cuenta), J (README — decidir si se
-      reescribe en inglés o se actualiza en español; hoy quedó actualizado solo
-      el nombre).
+      ~~H (onboarding sin Letterboxd)~~ ✅ (ver `onboarding-001` en Done),
+      ~~I (verificación de email + borrar cuenta)~~ ✅ (ver `account-i-001` en
+      Done), J (README — decidir si se reescribe en inglés o se actualiza en
+      español; hoy quedó actualizado solo el nombre). **Falta solo J para cerrar
+      la ola.**
 - [ ] **Renombrar la carpeta del proyecto** (`03 Projects/PeliPick/` →
       `03 Projects/Butaca/`) y la lista de proyectos del `CLAUDE.md` raíz del
       vault (fuera de este repo) — pendiente, requiere permiso explícito
@@ -90,6 +91,49 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [account-i-001] **Ola 4 · Tarea I — Verificación de email + borrar cuenta**
+      | owner: claude | Higiene mínima para usuarios desconocidos. Todo calcado
+      del flujo de reset de contraseña existente (token hasheado + TTL + mismo
+      degrade sin Resend).
+      - **Verificación de email:** columna `email_verified INTEGER DEFAULT 0` en
+        `users` (ambos schemas + migración `_run_migrations` para DBs
+        existentes), tabla `email_verification_tokens` (espejo de
+        `password_reset_tokens`, entra por el schema `IF NOT EXISTS`).
+        `mailer.send_verification_email` (mismo esqueleto que el de reset, TTL
+        24h). `main.py`: al registrarse se genera token + se manda mail (sin
+        Resend queda logueado; con `BUTACA_DEBUG=1` el token sale en la
+        respuesta de register vía `RegisterResponse`). `POST /auth/verify-email`
+        (público, como reset) confirma; `POST /auth/verify-email/resend`
+        (auth'd) reenvía; `GET /auth/me` ahora devuelve `email` + `email_verified`.
+        **No bloquea ninguna feature** — es aviso, no muro. Frontend:
+        `VerifyEmail.tsx` (calcada de `ResetPassword.tsx`, con guard de
+        StrictMode porque el token es de un solo uso) + `VerifyEmailBanner.tsx`
+        (banner discreto no bloqueante con reenviar/cerrar, bajo el navbar).
+      - **Borrar cuenta:** `db.delete_user_completely(user_id, username)` — DELETE
+        en orden hijo→padre (feedback → recommendations_served →
+        recommendation_sessions → rated_items → taste_profiles → watchlist_items
+        → email_verification_tokens → password_reset_tokens → sessions →
+        login_attempts por username → users), todo en una conexión/transacción.
+        `DELETE /auth/account` con password en el body (re-confirmación: el token
+        de sesión solo no alcanza). Frontend: `deleteAccount` en `useAuth` +
+        zona "danger" al pie de `Profile.tsx` con confirm de dos pasos (tipear el
+        usuario + password, estilo GitHub) → borra, limpia sesión local,
+        redirige a home.
+      - Modelos: `RegisterResponse`, `EmailVerificationConfirmRequest`,
+        `DeleteAccountRequest`. Auth: `EMAIL_VERIFICATION_TTL_SECONDS`,
+        `create_email_verification_token`.
+      - Tests: 8 nuevos en `test_auth.py` (register→verify→me; me unverified por
+        default; token inválido/expirado; resend con token + noop una vez
+        verificado; delete con password mala → 401; delete sin auth → 401; delete
+        exitoso → login falla + cero filas huérfanas en 7 tablas). **194 → 202**.
+      Verificado end-to-end en local (front+back): banner aparece sin verificar y
+      desaparece al confirmar; `/verify-email` marca `email_verified=1` y consume
+      el token; danger zone bloquea el botón hasta usuario+password correctos,
+      borra la cuenta, redirige a home y el login posterior da 401 sin filas
+      huérfanas.
+      **Pendiente de cierre de ola:** `build-log.md` + "Current Status" de
+      `CLAUDE.md` (requieren permiso, sin prefijo `(C)`), y la tarea J (README).
 
 - [x] [onboarding-001] **Ola 4 · Tarea H — Onboarding sin Letterboxd** | owner:
       claude | Que alguien sin cuenta de Letterboxd pueda usar el producto:

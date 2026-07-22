@@ -10,6 +10,8 @@ from . import db
 
 PBKDF2_ITERATIONS = 260_000
 RESET_TOKEN_TTL_SECONDS = 60 * 60
+# email verification links live longer than a reset — people open signup mail late
+EMAIL_VERIFICATION_TTL_SECONDS = 24 * 60 * 60
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -30,6 +32,11 @@ def create_token() -> str:
 
 
 def create_password_reset_token() -> tuple[str, str]:
+    token = create_token()
+    return token, hash_token(token)
+
+
+def create_email_verification_token() -> tuple[str, str]:
     token = create_token()
     return token, hash_token(token)
 

@@ -9,6 +9,7 @@ RESEND_URL = "https://api.resend.com/emails"
 REQUEST_TIMEOUT = 10
 DEFAULT_FROM = "Butaca <onboarding@resend.dev>"
 DEFAULT_RESET_URL = "https://butaca.xyz/reset-password"
+DEFAULT_VERIFY_URL = "https://butaca.xyz/verify-email"
 USER_AGENT = "Butaca/1.0"
 
 
@@ -80,6 +81,32 @@ def send_password_reset_email(to_email: str, reset_token: str) -> None:
                 f'<p><a href="{reset_link}">Hacé click acá para elegir una nueva</a> '
                 "(el link expira en 1 hora).</p>"
                 "<p>Si no fuiste vos, ignorá este mail.</p>"
+            ),
+        }
+    ).encode("utf-8")
+
+    _send_request(body, api_key)
+
+
+def send_verification_email(to_email: str, verification_token: str) -> None:
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise MailError("RESEND_API_KEY no está configurada.")
+
+    from_address = os.environ.get("RESEND_FROM_EMAIL", DEFAULT_FROM)
+    verify_url_base = os.environ.get("BUTACA_VERIFY_URL", DEFAULT_VERIFY_URL)
+    verify_link = f"{verify_url_base}?token={verification_token}"
+
+    body = json.dumps(
+        {
+            "from": from_address,
+            "to": [to_email],
+            "subject": "Confirmá tu email en Butaca",
+            "html": (
+                "<p>Bienvenido a Butaca.</p>"
+                f'<p><a href="{verify_link}">Hacé click acá para confirmar tu email</a> '
+                "(el link expira en 24 horas).</p>"
+                "<p>Si no te registraste vos, ignorá este mail.</p>"
             ),
         }
     ).encode("utf-8")

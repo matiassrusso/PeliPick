@@ -4,6 +4,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { Footer } from "./components/Footer";
 import { Navbar } from "./components/Navbar";
+import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { AuthProvider } from "./hooks/useAuth";
 import History from "./pages/History";
 import Home from "./pages/Home";
@@ -12,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import Profile from "./pages/Profile";
 import Recommend from "./pages/Recommend";
 import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
 
 function Router() {
   return (
@@ -19,6 +21,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/login" component={Login} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/recommend" component={Recommend} />
       <Route path="/history" component={History} />
       <Route path="/profile" component={Profile} />
@@ -41,6 +44,7 @@ export default function App() {
         />
         <div className="min-h-screen flex flex-col bg-background text-foreground">
           <Navbar />
+          <VerifyEmailBanner />
           <div className="flex-1">
             <Router />
           </div>

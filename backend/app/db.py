@@ -14,6 +14,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
     email TEXT,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    expires_at INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -107,6 +115,14 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     password_salt TEXT NOT NULL,
     email TEXT,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT ({_PG_NOW})
+);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    token_hash TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    expires_at INTEGER NOT NULL,
     created_at TEXT NOT NULL DEFAULT ({_PG_NOW})
 );
 
@@ -257,6 +273,8 @@ def _run_migrations(conn) -> None:
         conn.execute("ALTER TABLE rated_items ADD COLUMN watched_date TEXT NOT NULL DEFAULT ''")
     if not _has_column(conn, "users", "email"):
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    if not _has_column(conn, "users", "email_verified"):
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
 
 
 def _last_insert_id(conn, cursor):
@@ -440,6 +458,54 @@ def get_password_reset_token(token_hash: str) -> sqlite3.Row | None:
 def delete_password_reset_tokens_for_user(user_id: int) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+
+
+def save_email_verification_token(user_id: int, token_hash: str, expires_at: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+        conn.execute(
+            "INSERT INTO email_verification_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+            (token_hash, user_id, expires_at),
+        )
+
+
+def get_email_verification_token(token_hash: str) -> sqlite3.Row | None:
+    with get_connection() as conn:
+        return conn.execute(
+            """
+            SELECT email_verification_tokens.*, users.username
+            FROM email_verification_tokens
+            JOIN users ON users.id = email_verification_tokens.user_id
+            WHERE email_verification_tokens.token_hash = ?
+            """,
+            (token_hash,),
+        ).fetchone()
+
+
+def mark_email_verified(user_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+        conn.execute("DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+
+
+def delete_user_completely(user_id: int, username: str) -> None:
+    """Wipe a user and everything that references them, child tables first so
+    FK constraints hold (SQLite runs with foreign_keys=ON). One connection =
+    one transaction: get_connection commits on clean exit, rolls back on error,
+    so a partial delete can't leave orphaned rows. login_attempts is keyed by
+    username, not user_id."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM feedback WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM recommendations_served WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM recommendation_sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM rated_items WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM taste_profiles WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM watchlist_items WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM login_attempts WHERE username = ?", (username,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
 def save_rated_items(user_id: int, items: list[tuple[str, float, str, str]]) -> None:

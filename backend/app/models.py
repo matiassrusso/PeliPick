@@ -119,6 +119,22 @@ class AuthResponse(BaseModel):
     username: str
 
 
+class RegisterResponse(AuthResponse):
+    # only populated with BUTACA_DEBUG=1 when Resend isn't sending the mail —
+    # same escape hatch as the password reset flow, never exposed in prod
+    verification_token: str | None = None
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
+class DeleteAccountRequest(BaseModel):
+    # password re-confirmation: the session token alone shouldn't be enough to
+    # wipe an account
+    password: str = Field(min_length=1, max_length=200)
+
+
 class PasswordResetRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
 

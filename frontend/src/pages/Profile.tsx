@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useLocation } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
@@ -112,11 +113,31 @@ function PeopleList({ people }: { people: PersonCount[] }) {
 }
 
 export default function Profile() {
-  const { isAuthenticated, loading: authLoading, token } = useAuth();
+  const { isAuthenticated, loading: authLoading, token, user, deleteAccount } = useAuth();
   const [, navigate] = useLocation();
   const [profile, setProfile] = useState<TasteProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // danger zone: delete account (two-step — type username + password)
+  const [confirmUsername, setConfirmUsername] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAccount(deletePassword);
+      toast.success("Tu cuenta y tus datos fueron borrados.");
+      navigate("/");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "No pude borrar la cuenta.");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -260,6 +281,56 @@ export default function Profile() {
             </div>
           </>
         )}
+
+        <section className="mt-24 border-t-2 border-destructive/40 pt-10">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-destructive mb-3">
+            [Zona de peligro]
+          </div>
+          <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Borrar cuenta</h2>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground max-w-md mb-6">
+            Borra tu cuenta y todos tus datos (ratings, historial, perfil de gusto). No se puede
+            deshacer.
+          </p>
+
+          <div className="max-w-md space-y-4">
+            <label className="block">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Escribí tu usuario ({user?.username}) para confirmar
+              </span>
+              <input
+                value={confirmUsername}
+                onChange={(e) => setConfirmUsername(e.target.value)}
+                autoComplete="off"
+                className="mt-2 w-full bg-transparent border-b-2 border-foreground py-2 font-mono text-sm focus:outline-none focus:border-destructive"
+              />
+            </label>
+            <label className="block">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Contraseña
+              </span>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                className="mt-2 w-full bg-transparent border-b-2 border-foreground py-2 font-mono text-sm focus:outline-none focus:border-destructive"
+              />
+            </label>
+
+            <button
+              onClick={handleDeleteAccount}
+              disabled={deleting || confirmUsername !== user?.username || !deletePassword}
+              className="w-full py-3 border-2 border-destructive text-destructive font-mono text-xs uppercase tracking-widest hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-destructive"
+            >
+              {deleting ? "Borrando…" : "Borrar mi cuenta para siempre"}
+            </button>
+
+            {deleteError && (
+              <div className="p-3 border-2 border-destructive/50 font-mono text-xs text-destructive">
+                {deleteError}
+              </div>
+            )}
+          </div>
+        </section>
       </main>
     </PageTransition>
   );

@@ -25,6 +25,8 @@ from . import (
 from .models import (
     AuthResponse,
     CatalogStatsResponse,
+    DeleteAccountRequest,
+    EmailVerificationConfirmRequest,
     FeedbackRequest,
     ManualRecommendRequest,
     MovieDetails,
@@ -36,6 +38,7 @@ from .models import (
     RecommendationHistoryResponse,
     PasswordResetStartResponse,
     Recommendation,
+    RegisterResponse,
     RecommendRequest,
     RecommendResponse,
     RegisterRequest,
@@ -180,8 +183,31 @@ def admin_stats(x_admin_token: str | None = Header(default=None)) -> dict:
     return db.get_admin_stats()
 
 
-@app.post("/auth/register", response_model=AuthResponse, status_code=201)
-def register(payload: RegisterRequest) -> AuthResponse:
+def _issue_email_verification(user_id: int, email: str | None) -> str:
+    """Generate + persist a verification token and try to email it. Same
+    degrade as the password reset flow: without Resend (or without an email on
+    file) the mail is skipped and logged; the token is still returned so the
+    caller can expose it under BUTACA_DEBUG for local testing."""
+    token, token_hash = auth.create_email_verification_token()
+    expires_at = auth.now_ts() + auth.EMAIL_VERIFICATION_TTL_SECONDS
+    db.save_email_verification_token(user_id, token_hash, expires_at)
+
+    if not mailer.is_configured():
+        logger.warning("Verification email skipped: RESEND_API_KEY no está configurada.")
+    elif not email:
+        logger.warning("Verification email skipped: el usuario no tiene email cargado.")
+    else:
+        try:
+            mailer.send_verification_email(email, token)
+            logger.info("Verification email sent.")
+        except mailer.MailError as exc:
+            logger.warning("Verification email failed to send: %s", exc)
+
+    return token
+
+
+@app.post("/auth/register", response_model=RegisterResponse, status_code=201)
+def register(payload: RegisterRequest) -> RegisterResponse:
     if db.get_user_by_username(payload.username) is not None:
         raise HTTPException(status_code=409, detail="Ese usuario ya existe.")
 
@@ -189,7 +215,10 @@ def register(payload: RegisterRequest) -> AuthResponse:
     user_id = db.create_user(payload.username, password_hash, password_salt, payload.email)
     token = auth.create_token()
     db.create_session(token, user_id)
-    return AuthResponse(token=token, username=payload.username)
+
+    verification_token = _issue_email_verification(user_id, payload.email)
+    exposed = verification_token if _debug_mode() else None
+    return RegisterResponse(token=token, username=payload.username, verification_token=exposed)
 
 
 @app.post("/auth/login", response_model=AuthResponse)
@@ -261,15 +290,53 @@ def reset_password(payload: PasswordResetConfirmRequest) -> None:
     db.clear_login_attempts(token_record["username"])
 
 
+@app.post("/auth/verify-email", status_code=204)
+def verify_email(payload: EmailVerificationConfirmRequest) -> None:
+    # public like /auth/reset-password: the user clicks a mailed link and may
+    # not have a live session in that tab
+    token_record = db.get_email_verification_token(auth.hash_token(payload.token))
+    if token_record is None or token_record["expires_at"] < auth.now_ts():
+        raise HTTPException(status_code=400, detail="Token de verificación inválido o expirado.")
+    db.mark_email_verified(token_record["user_id"])
+
+
+@app.post("/auth/verify-email/resend", response_model=PasswordResetStartResponse)
+def resend_verification(
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> PasswordResetStartResponse:
+    if user["email_verified"]:
+        return PasswordResetStartResponse(status="ok", reset_token=None)
+    token = _issue_email_verification(user["id"], user["email"])
+    exposed = token if _debug_mode() else None
+    return PasswordResetStartResponse(status="ok", reset_token=exposed)
+
+
 @app.get("/auth/me")
-def me(user: sqlite3.Row = Depends(auth.get_current_user)) -> dict[str, str]:
-    return {"username": user["username"]}
+def me(user: sqlite3.Row = Depends(auth.get_current_user)) -> dict:
+    return {
+        "username": user["username"],
+        "email": user["email"],
+        # never block features on this (see plan): it's a non-blocking prompt
+        "email_verified": bool(user["email_verified"]),
+    }
 
 
 @app.post("/auth/logout", status_code=204)
 def logout(authorization: str | None = Header(default=None)) -> None:
     if authorization and authorization.startswith("Bearer "):
         db.delete_session(authorization.removeprefix("Bearer ").strip())
+
+
+@app.delete("/auth/account", status_code=204)
+def delete_account(
+    payload: DeleteAccountRequest,
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> None:
+    # re-confirm with the password: a leaked/borrowed session token must not be
+    # enough to irreversibly wipe the account
+    if not auth.verify_password(payload.password, user["password_hash"], user["password_salt"]):
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta.")
+    db.delete_user_completely(user["id"], user["username"])
 
 
 @app.post("/recommend", response_model=RecommendResponse)

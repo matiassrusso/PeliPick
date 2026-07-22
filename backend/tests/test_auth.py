@@ -1,8 +1,29 @@
+import io
+import zipfile
+
 from fastapi.testclient import TestClient
 
+from backend.app import db
 from backend.app.main import app
 
 client = TestClient(app)
+
+
+def _register(username: str, monkeypatch=None) -> dict:
+    if monkeypatch is not None:
+        monkeypatch.setenv("BUTACA_DEBUG", "1")
+    return client.post(
+        "/auth/register",
+        json={"username": username, "password": "supersecret", "email": f"{username}@example.com"},
+    ).json()
+
+
+def _zip_bytes(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buffer.getvalue()
 
 
 def test_register_creates_user_and_returns_token() -> None:
@@ -266,3 +287,142 @@ def test_reset_password_rejects_expired_token(monkeypatch) -> None:
     )
 
     assert response.status_code == 400
+
+
+# ─── Email verification ─────────────────────────────────────────────────────
+
+
+def test_register_issues_verification_and_verify_confirms(monkeypatch) -> None:
+    body = _register("verifyme", monkeypatch)
+    token = body["verification_token"]
+    assert token  # exposed because BUTACA_DEBUG=1
+
+    headers = {"Authorization": f"Bearer {body['token']}"}
+    assert client.get("/auth/me", headers=headers).json()["email_verified"] is False
+
+    confirm = client.post("/auth/verify-email", json={"token": token})
+    assert confirm.status_code == 204
+
+    assert client.get("/auth/me", headers=headers).json()["email_verified"] is True
+
+
+def test_auth_me_reports_unverified_by_default() -> None:
+    body = _register("freshuser")
+    headers = {"Authorization": f"Bearer {body['token']}"}
+
+    me = client.get("/auth/me", headers=headers).json()
+
+    assert me["email_verified"] is False
+    assert me["email"] == "freshuser@example.com"
+
+
+def test_verify_email_rejects_invalid_token() -> None:
+    response = client.post("/auth/verify-email", json={"token": "x" * 40})
+    assert response.status_code == 400
+
+
+def test_verify_email_rejects_expired_token(monkeypatch) -> None:
+    monkeypatch.setattr("backend.app.main.auth.now_ts", lambda: 5_000)
+    body = _register("verifyexpired", monkeypatch)
+    token = body["verification_token"]
+
+    monkeypatch.setattr(
+        "backend.app.main.auth.now_ts", lambda: 5_000 + auth_ttl() + 1
+    )
+    response = client.post("/auth/verify-email", json={"token": token})
+
+    assert response.status_code == 400
+
+
+def auth_ttl() -> int:
+    from backend.app import auth
+
+    return auth.EMAIL_VERIFICATION_TTL_SECONDS
+
+
+def test_resend_verification_returns_token_under_debug_and_noop_once_verified(monkeypatch) -> None:
+    body = _register("resendme", monkeypatch)
+    headers = {"Authorization": f"Bearer {body['token']}"}
+
+    resend = client.post("/auth/verify-email/resend", headers=headers)
+    assert resend.status_code == 200
+    new_token = resend.json()["reset_token"]
+    assert new_token
+
+    assert client.post("/auth/verify-email", json={"token": new_token}).status_code == 204
+
+    # already verified: no new token issued
+    again = client.post("/auth/verify-email/resend", headers=headers)
+    assert again.status_code == 200
+    assert again.json()["reset_token"] is None
+
+
+# ─── Delete account ─────────────────────────────────────────────────────────
+
+
+def test_delete_account_rejects_wrong_password() -> None:
+    body = _register("delwrongpw")
+    headers = {"Authorization": f"Bearer {body['token']}"}
+
+    response = client.request(
+        "DELETE", "/auth/account", json={"password": "notmypassword"}, headers=headers
+    )
+
+    assert response.status_code == 401
+    # account still usable
+    assert client.get("/auth/me", headers=headers).status_code == 200
+
+
+def test_delete_account_requires_auth() -> None:
+    response = client.request("DELETE", "/auth/account", json={"password": "whatever"})
+    assert response.status_code == 401
+
+
+def test_delete_account_wipes_user_and_all_their_rows() -> None:
+    body = _register("delfull")
+    headers = {"Authorization": f"Bearer {body['token']}"}
+    user_id = db.get_user_by_username("delfull")["id"]
+
+    # seed rated_items + recommendation_sessions + recommendations_served
+    seed = client.post(
+        "/recommend/zip",
+        headers=headers,
+        data={"mood": ""},
+        files={
+            "file": (
+                "export.zip",
+                _zip_bytes({"ratings.csv": "Name,Rating,Review\nMad Max: Fury Road,4.5,great"}),
+                "application/zip",
+            )
+        },
+    )
+    assert seed.status_code == 200
+
+    response = client.request(
+        "DELETE", "/auth/account", json={"password": "supersecret"}, headers=headers
+    )
+    assert response.status_code == 204
+
+    # session invalidated, login impossible, user gone
+    assert client.get("/auth/me", headers=headers).status_code == 401
+    assert (
+        client.post("/auth/login", json={"username": "delfull", "password": "supersecret"}).status_code
+        == 401
+    )
+    assert db.get_user_by_username("delfull") is None
+
+    # no orphan rows left behind in any user-scoped table
+    with db.get_connection() as conn:
+        for table in (
+            "rated_items",
+            "recommendation_sessions",
+            "recommendations_served",
+            "feedback",
+            "taste_profiles",
+            "watchlist_items",
+            "sessions",
+        ):
+            n = conn.execute(
+                f"SELECT COUNT(*) AS n FROM {table} WHERE user_id = ?", (user_id,)
+            ).fetchone()["n"]
+            assert n == 0, f"orphan rows left in {table}"
