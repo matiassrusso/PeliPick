@@ -72,9 +72,10 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       un cargo sorpresa, pero eso también significa que se pierde el dominio
       si nadie lo renueva a mano.
 - [ ] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
-      H (onboarding sin Letterboxd), I (verificación de email + borrar
-      cuenta), J (README — decidir si se reescribe en inglés o se actualiza
-      en español; hoy quedó actualizado solo el nombre).
+      ~~H (onboarding sin Letterboxd)~~ ✅ hecho (ver `onboarding-001` en Done),
+      I (verificación de email + borrar cuenta), J (README — decidir si se
+      reescribe en inglés o se actualiza en español; hoy quedó actualizado solo
+      el nombre).
 - [ ] **Renombrar la carpeta del proyecto** (`03 Projects/PeliPick/` →
       `03 Projects/Butaca/`) y la lista de proyectos del `CLAUDE.md` raíz del
       vault (fuera de este repo) — pendiente, requiere permiso explícito
@@ -89,6 +90,53 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 (vacío)
 
 ## Done
+
+- [x] [onboarding-001] **Ola 4 · Tarea H — Onboarding sin Letterboxd** | owner:
+      claude | Que alguien sin cuenta de Letterboxd pueda usar el producto:
+      puntúa a mano ≥10 películas conocidas y con eso arma perfil + picks.
+      - **`backend/app/onboarding_titles.py`** (nuevo): 39 títulos curados
+        (1972-2024, variados en género/década) como constantes públicas
+        estables. Curados a mano, no de `/movie/popular` (que ordena por clics
+        del sitio y sesga a estrenos), y unambiguos a propósito porque
+        `search_title` toma `results[0]` (orden de popularidad de TMDb).
+      - **`GET /onboarding/titles`** (`main.py`): resuelve poster/tmdb_id de cada
+        título contra TMDb en paralelo (mismo `ThreadPoolExecutor` que
+        `_watchlist_candidates`, reusa `search_title` cacheado 24h — sin
+        endpoint fetch-by-id nuevo). Sin `TMDB_API_KEY` degrada a título/año.
+      - **`POST /recommend/manual`** (`main.py`): body JSON `{ratings:[{title,
+        rating}], mood, mode, kind_filter, genres, refine}`; valida ≥10 ratings
+        (`MIN_MANUAL_RATINGS`), arma `RatedItem`s y delega en el
+        `_finish_recommend` compartido (enriquecimiento de tags, perfil,
+        candidatos, persistencia, refine). Los títulos puntuados entran a
+        `extra_seen` para no recomendarlos de vuelta.
+      - **Modelos** (`models.py`): `ManualRating`, `ManualRecommendRequest`,
+        `OnboardingTitle`, `OnboardingTitlesResponse`.
+      - **Frontend** (`frontend/src/pages/Recommend.tsx`): en vez de una página
+        nueva que duplicaría todo el render de picks/modal/feedback/refine, se
+        agregó "manual" como **tercera fuente** ("Sin cuenta") junto a
+        zip/username — reusa la vista de resultados tal cual. Grilla de posters
+        con botones Me encantó/Bien/No me gustó/No la vi (4.5/3.5/1.5/skip) en
+        la columna derecha, contador N/10, y `POST /recommend/manual` en
+        `handleGenerate`. Modos `watchlist`/`recent` deshabilitados para manual
+        (sin zip / sin fechas de visto).
+      - **Búsqueda de pelis fuera del catálogo** (pedido de Matías): la lista
+        curada es fija, así que se sumó una caja de búsqueda arriba de la grilla
+        para agregar una peli vista que no esté ahí. `tmdb_client.search_titles`
+        (multi-resultado, movies, forma mínima título/año/tmdb_id/poster) +
+        `GET /onboarding/search?q=` (degrada a lista vacía sin key / query <2
+        chars / error de TMDb). Frontend: input con debounce 350ms + dropdown de
+        resultados; al elegir uno se agrega arriba de la grilla y se puntúa con
+        los mismos botones (deduplica contra la lista curada y lo ya agregado).
+      - Tests: 10 nuevos en `test_main.py` (titles con/sin TMDb + auth; manual
+        con picks/exclusión/validación de mode y mínimo; search con match/query
+        corta/sin key). **184 → 194**.
+      Verificado end-to-end en local (front+back corriendo): grilla renderiza
+      los 39, contador y botón de generar reaccionan, submit aterriza en la
+      vista de picks reusada. Nota: el TMDb local devuelve 401 (el `.env` local
+      tiene la key vieja rotada la sesión pasada — config local, no bug), así
+      que en local degrada al catálogo mock; producción tiene la key nueva.
+      **Pendiente de cierre de ola:** entrada en `build-log.md` y "Current
+      Status" de `CLAUDE.md` (requiere permiso, sin prefijo `(C)`).
 
 - [x] [llm-match-001] **Dos bugs que tiraban los picks del LLM al heurístico**
       | owner: claude | Encontrados al verificar el import por RSS: el log

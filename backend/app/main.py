@@ -10,12 +10,26 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from . import auth, catalog, db, letterboxd_scrape, letterboxd_zip, llm_client, mailer, taste_profile, tmdb_client
+from . import (
+    auth,
+    catalog,
+    db,
+    letterboxd_scrape,
+    letterboxd_zip,
+    llm_client,
+    mailer,
+    onboarding_titles,
+    taste_profile,
+    tmdb_client,
+)
 from .models import (
     AuthResponse,
     CatalogStatsResponse,
     FeedbackRequest,
+    ManualRecommendRequest,
     MovieDetails,
+    OnboardingTitle,
+    OnboardingTitlesResponse,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
     RatedItem,
@@ -35,6 +49,7 @@ MAX_ZIP_SIZE = 20 * 1024 * 1024  # 20MB — real Letterboxd exports run in the t
 VALID_MODES = {"profile", "recent", "genres", "watchlist"}
 VALID_KIND_FILTERS = {"movie", "series", "both"}
 RECENT_WINDOW = 10  # how many of the user's most-recently-watched titles count as "lo último que vi"
+MIN_MANUAL_RATINGS = 10  # onboarding without Letterboxd needs at least this many rated seed titles
 DEFAULT_RECOMMEND_DAILY_LIMIT = 20  # per user; protects TMDb/NIM quotas. 0 = off.
 WATCHLIST_MATCH_CAP = 60  # how many watchlist titles to resolve against TMDb per request
 
@@ -590,6 +605,88 @@ def recommend_titles_from_letterboxd(
 
     return _finish_recommend(
         ratings, extra_seen, mood, mode, kind_filter, genres, user, refine=_refine_enabled(refine)
+    )
+
+
+@app.get("/onboarding/titles", response_model=OnboardingTitlesResponse)
+def onboarding_titles_endpoint(
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> OnboardingTitlesResponse:
+    """Seed titles for a user without Letterboxd to rate. Posters/ids are
+    resolved against TMDb in parallel (same pattern as _watchlist_candidates);
+    without a TMDb key they degrade to title/year only (poster_path=None)."""
+    seeds = onboarding_titles.ONBOARDING_TITLES
+
+    matches: dict[str, dict | None] = {}
+    if tmdb_client.is_configured():
+        def _match(seed: dict) -> tuple[str, dict | None]:
+            try:
+                return seed["title"], tmdb_client.search_title(seed["title"])
+            except tmdb_client.TmdbError:
+                return seed["title"], None
+
+        with ThreadPoolExecutor(max_workers=taste_profile.MATCH_WORKERS) as pool:
+            matches = dict(pool.map(_match, seeds))
+
+    titles = [
+        OnboardingTitle(
+            title=seed["title"],
+            year=seed["year"],
+            kind="movie",
+            tmdb_id=(matches.get(seed["title"]) or {}).get("tmdb_id"),
+            poster_path=(matches.get(seed["title"]) or {}).get("poster_path"),
+        )
+        for seed in seeds
+    ]
+    return OnboardingTitlesResponse(titles=titles)
+
+
+@app.get("/onboarding/search", response_model=OnboardingTitlesResponse)
+def onboarding_search_endpoint(
+    q: str,
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> OnboardingTitlesResponse:
+    """Search TMDb for a film the user has seen but that isn't in the seed
+    list, so they can add it to their onboarding ratings. Degrades to an empty
+    list without a TMDb key or on any TMDb hiccup — a failed search must not
+    block onboarding."""
+    if len(q.strip()) < 2 or not tmdb_client.is_configured():
+        return OnboardingTitlesResponse(titles=[])
+    try:
+        results = tmdb_client.search_titles(q)
+    except tmdb_client.TmdbError:
+        return OnboardingTitlesResponse(titles=[])
+    return OnboardingTitlesResponse(titles=[OnboardingTitle(**r) for r in results])
+
+
+@app.post("/recommend/manual", response_model=RecommendResponse)
+def recommend_titles_manual(
+    payload: ManualRecommendRequest,
+    user: sqlite3.Row = Depends(auth.get_current_user),
+) -> RecommendResponse:
+    """Onboarding without Letterboxd: the user rated a handful of seed titles
+    by hand. Build RatedItems and hand off to the shared _finish_recommend."""
+    _validate_recommend_params(payload.mode, payload.kind_filter)
+
+    if len(payload.ratings) < MIN_MANUAL_RATINGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Puntuá al menos {MIN_MANUAL_RATINGS} títulos para armar tu perfil.",
+        )
+
+    ratings = [RatedItem(title=item.title, rating=item.rating) for item in payload.ratings]
+    # every rated title is one the user has seen — never recommend it back
+    extra_seen = {item.title for item in ratings}
+
+    return _finish_recommend(
+        ratings,
+        extra_seen,
+        payload.mood,
+        payload.mode,
+        payload.kind_filter,
+        payload.genres,
+        user,
+        refine=payload.refine,
     )
 
 

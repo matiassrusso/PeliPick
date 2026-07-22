@@ -16,6 +16,34 @@ class RecommendRequest(BaseModel):
     ratings: list[RatedItem] = Field(default_factory=list)
 
 
+class ManualRating(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    rating: float = Field(ge=0.5, le=5)
+
+
+class ManualRecommendRequest(BaseModel):
+    # onboarding without Letterboxd: the user rated a handful of seed titles
+    ratings: list[ManualRating] = Field(default_factory=list)
+    mood: str = ""
+    mode: str = "profile"
+    kind_filter: str = "both"
+    genres: str = ""
+    # False for the fast first render; frontend then calls the refine endpoint
+    refine: bool = True
+
+
+class OnboardingTitle(BaseModel):
+    title: str
+    year: int
+    kind: str = "movie"
+    tmdb_id: int | None = None
+    poster_path: str | None = None
+
+
+class OnboardingTitlesResponse(BaseModel):
+    titles: list[OnboardingTitle]
+
+
 class CatalogStatsResponse(BaseModel):
     movies: int
     series: int

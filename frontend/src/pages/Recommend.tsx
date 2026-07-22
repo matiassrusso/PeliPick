@@ -83,6 +83,25 @@ const genreOptions: { key: string; label: string }[] = [
   { key: "scifi", label: "Ciencia ficción / fantástico" },
 ];
 
+type ImportMethod = "zip" | "username" | "manual";
+
+// onboarding without Letterboxd: rate seed titles by hand
+type OnboardingTitle = {
+  title: string;
+  year: number;
+  kind: string;
+  tmdb_id: number | null;
+  poster_path: string | null;
+};
+
+const MIN_MANUAL_RATINGS = 10; // keep in sync with backend/app/main.py::MIN_MANUAL_RATINGS
+// each button maps to a synthetic rating; "No la vi" removes the title (skip)
+const manualRatingOptions: { label: string; value: number }[] = [
+  { label: "Me encantó", value: 4.5 },
+  { label: "Bien", value: 3.5 },
+  { label: "No me gustó", value: 1.5 },
+];
+
 function formatFileSize(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -411,6 +430,76 @@ function RecommendationCard({
   );
 }
 
+// ─── Onboarding rating grid (no Letterboxd) ─────────────────────────────────
+
+function ManualRatingGrid({
+  titles,
+  ratings,
+  loading,
+  onRate,
+}: {
+  titles: OnboardingTitle[];
+  ratings: Record<string, number>;
+  loading: boolean;
+  onRate: (title: string, rating: number | null) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="p-12 text-center">
+        <Loader2 className="w-6 h-6 text-accent animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+      {titles.map((item) => {
+        const current = ratings[item.title];
+        return (
+          <div key={item.title} className="flex flex-col">
+            <div className="relative overflow-hidden aspect-[2/3] bg-secondary mb-2 border border-foreground/10">
+              {item.poster_path ? (
+                <img src={item.poster_path} alt={item.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Film className="w-7 h-7 text-muted-foreground/40" />
+                </div>
+              )}
+            </div>
+            <div className="font-black uppercase text-xs tracking-tighter leading-none mb-0.5">{item.title}</div>
+            <div className="font-mono text-[10px] text-muted-foreground mb-2">{item.year}</div>
+            <div className="mt-auto grid grid-cols-2 gap-1">
+              {manualRatingOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => onRate(item.title, current === option.value ? null : option.value)}
+                  className={`px-1.5 py-1.5 font-mono text-[9px] uppercase tracking-wider border transition-colors ${
+                    current === option.value
+                      ? "bg-accent text-accent-foreground border-accent"
+                      : "border-foreground/20 hover:border-foreground"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <button
+                onClick={() => onRate(item.title, null)}
+                className={`px-1.5 py-1.5 font-mono text-[9px] uppercase tracking-wider border transition-colors ${
+                  current === undefined
+                    ? "bg-foreground text-background border-foreground"
+                    : "border-foreground/20 hover:border-foreground"
+                }`}
+              >
+                No la vi
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function Recommend() {
@@ -420,11 +509,34 @@ export default function Recommend() {
   const [mode, setMode] = useState<RecommendMode>("profile");
   const [kindFilter, setKindFilter] = useState<KindFilter>("both");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [importMethod, setImportMethod] = useState<"zip" | "username">("zip");
+  const [importMethod, setImportMethod] = useState<ImportMethod>("zip");
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [letterboxdUsername, setLetterboxdUsername] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // onboarding without Letterboxd: seed titles fetched lazily, ratings by title
+  const [onboardingTitles, setOnboardingTitles] = useState<OnboardingTitle[]>([]);
+  const [loadingTitles, setLoadingTitles] = useState(false);
+  const [manualRatings, setManualRatings] = useState<Record<string, number>>({});
+  // titles the user searched and added (seen a film that isn't in the seed list)
+  const [addedTitles, setAddedTitles] = useState<OnboardingTitle[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<OnboardingTitle[]>([]);
+  const manualCount = Object.keys(manualRatings).length;
+
+  // added titles first (on top), then the seed list, deduped by title
+  const manualTitles = (() => {
+    const seen = new Set<string>();
+    const merged: OnboardingTitle[] = [];
+    for (const item of [...addedTitles, ...onboardingTitles]) {
+      const key = item.title.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
+    return merged;
+  })();
 
   const [result, setResult] = useState<RecommendResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -439,13 +551,75 @@ export default function Recommend() {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  // watchlist mode needs a zip import (username scraping doesn't carry one),
-  // so fall back to the default mode if the user switches source while it's on
+  // watchlist needs a zip (only the zip carries one); recent needs real watch
+  // dates (manual ratings have none) — fall back to profile if the current
+  // source can't serve the selected mode
   useEffect(() => {
-    if (importMethod === "username" && mode === "watchlist") {
+    if (
+      (mode === "watchlist" && importMethod !== "zip") ||
+      (mode === "recent" && importMethod === "manual")
+    ) {
       setMode("profile");
     }
   }, [importMethod, mode]);
+
+  // fetch the seed titles the first time onboarding is opened
+  useEffect(() => {
+    if (importMethod !== "manual" || onboardingTitles.length || loadingTitles || !token) return;
+    setLoadingTitles(true);
+    fetch(`${API_BASE_URL}/onboarding/titles`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { titles: OnboardingTitle[] } | null) => {
+        if (body) setOnboardingTitles(body.titles);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTitles(false));
+  }, [importMethod, onboardingTitles.length, loadingTitles, token]);
+
+  function rateManual(title: string, rating: number | null) {
+    setManualRatings((prev) => {
+      const next = { ...prev };
+      if (rating === null) delete next[title];
+      else next[title] = rating;
+      return next;
+    });
+  }
+
+  // debounced TMDb search for a seen film that isn't in the seed list
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (importMethod !== "manual" || query.length < 2 || !token) {
+      setSearchResults([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE_URL}/onboarding/search?q=${encodeURIComponent(query)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body: { titles: OnboardingTitle[] } | null) => {
+          if (body) setSearchResults(body.titles);
+        })
+        .catch(() => {});
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [searchQuery, importMethod, token]);
+
+  function addSearchedTitle(item: OnboardingTitle) {
+    const exists = manualTitles.some((t) => t.title.toLowerCase() === item.title.toLowerCase());
+    if (exists) {
+      toast.info("Esa peli ya está en la lista.");
+    } else {
+      setAddedTitles((prev) => [item, ...prev]);
+    }
+    setSearchQuery("");
+    setSearchResults([]);
+  }
 
   const processFile = useCallback((file: File) => {
     if (!file.name.toLowerCase().endsWith(".zip")) {
@@ -471,7 +645,12 @@ export default function Recommend() {
     setSelectedGenres((prev) => (prev.includes(key) ? prev.filter((g) => g !== key) : [...prev, key]));
   }
 
-  const hasSource = importMethod === "zip" ? Boolean(zipFile) : letterboxdUsername.trim().length > 0;
+  const hasSource =
+    importMethod === "zip"
+      ? Boolean(zipFile)
+      : importMethod === "username"
+        ? letterboxdUsername.trim().length > 0
+        : manualCount >= MIN_MANUAL_RATINGS;
   const canGenerate = hasSource && (mode !== "genres" || selectedGenres.length > 0);
 
   async function handleGenerate() {
@@ -479,30 +658,46 @@ export default function Recommend() {
     setLoading(true);
     setError("");
 
+    // fast first render everywhere: get the heuristic picks now (refine off),
+    // swap in the LLM-written reasons afterward via the refine endpoint so the
+    // user isn't waiting on the ~5-15s model call to see anything
     try {
-      const formData = new FormData();
-      formData.append("mode", mode);
-      formData.append("kind_filter", kindFilter);
-      formData.append("genres", mode === "genres" ? selectedGenres.join(",") : "");
-      // fast first render: get the heuristic picks now, swap in the LLM-written
-      // reasons afterward via the refine endpoint so the user isn't waiting on
-      // the ~5-15s model call to see anything
-      formData.append("refine", "0");
-
-      let endpoint = `${API_BASE_URL}/recommend/zip`;
-      if (importMethod === "zip") {
-        if (!zipFile) return;
-        formData.append("file", zipFile);
+      let response: Response;
+      if (importMethod === "manual") {
+        response = await fetch(`${API_BASE_URL}/recommend/manual`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            ratings: Object.entries(manualRatings).map(([title, rating]) => ({ title, rating })),
+            mood: "",
+            mode,
+            kind_filter: kindFilter,
+            genres: mode === "genres" ? selectedGenres.join(",") : "",
+            refine: false,
+          }),
+        });
       } else {
-        endpoint = `${API_BASE_URL}/recommend/letterboxd`;
-        formData.append("username", letterboxdUsername.trim());
-      }
+        const formData = new FormData();
+        formData.append("mode", mode);
+        formData.append("kind_filter", kindFilter);
+        formData.append("genres", mode === "genres" ? selectedGenres.join(",") : "");
+        formData.append("refine", "0");
 
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
+        let endpoint = `${API_BASE_URL}/recommend/zip`;
+        if (importMethod === "zip") {
+          if (!zipFile) return;
+          formData.append("file", zipFile);
+        } else {
+          endpoint = `${API_BASE_URL}/recommend/letterboxd`;
+          formData.append("username", letterboxdUsername.trim());
+        }
+
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+      }
 
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -615,9 +810,30 @@ export default function Recommend() {
                   <button onClick={() => setImportMethod("username")} className={tabCls(importMethod === "username")}>
                     Username
                   </button>
+                  <button onClick={() => setImportMethod("manual")} className={tabCls(importMethod === "manual")}>
+                    Sin cuenta
+                  </button>
                 </div>
 
-                {importMethod === "zip" ? (
+                {importMethod === "manual" ? (
+                  <div>
+                    <p className="font-mono text-[10px] uppercase leading-relaxed text-muted-foreground mb-3">
+                      ¿No tenés Letterboxd? Puntuá pelis conocidas de la lista de la derecha y
+                      armamos tu perfil con eso.
+                    </p>
+                    <div className="font-mono text-xs uppercase tracking-widest">
+                      <span className={manualCount >= MIN_MANUAL_RATINGS ? "text-accent" : ""}>
+                        {manualCount}
+                      </span>{" "}
+                      / {MIN_MANUAL_RATINGS} puntuadas
+                    </div>
+                    {manualCount < MIN_MANUAL_RATINGS && (
+                      <p className="font-mono text-[10px] text-muted-foreground/60 mt-1">
+                        Puntuá al menos {MIN_MANUAL_RATINGS} para empezar.
+                      </p>
+                    )}
+                  </div>
+                ) : importMethod === "zip" ? (
                   <div
                     onDrop={handleDrop}
                     onDragOver={(e) => {
@@ -666,17 +882,19 @@ export default function Recommend() {
                 </div>
                 <div className="space-y-2">
                   {modeOptions.map((option) => {
-                    const disabled = option.mode === "watchlist" && importMethod === "username";
+                    const disabled =
+                      (option.mode === "watchlist" && importMethod !== "zip") ||
+                      (option.mode === "recent" && importMethod === "manual");
+                    const disabledReason =
+                      option.mode === "watchlist"
+                        ? "La watchlist solo viene en el .zip de Letterboxd — subí tu .zip para usar este modo."
+                        : "Este modo necesita fechas de visto, que el modo sin cuenta no tiene.";
                     return (
                       <button
                         key={option.mode}
                         onClick={() => !disabled && setMode(option.mode)}
                         disabled={disabled}
-                        title={
-                          disabled
-                            ? "El import por username no trae la watchlist — subí tu .zip para usar este modo."
-                            : undefined
-                        }
+                        title={disabled ? disabledReason : undefined}
                         className={`w-full text-left px-4 py-3 border font-mono text-xs uppercase tracking-widest transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                           mode === option.mode
                             ? "bg-foreground text-background border-foreground"
@@ -734,9 +952,58 @@ export default function Recommend() {
             </aside>
 
             <section className="lg:col-span-8">
-              <div className="p-8 border-2 border-dashed border-foreground/20 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                Tus picks van a aparecer acá
-              </div>
+              {importMethod === "manual" ? (
+                <>
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                      [Puntuá las que hayas visto]
+                    </div>
+                  </div>
+
+                  {/* buscar una peli vista que no esté en la lista curada */}
+                  <div className="relative mb-6">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="¿Viste otra? Buscala por nombre…"
+                      className="w-full bg-transparent border-b-2 border-foreground py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent"
+                    />
+                    {searchResults.length > 0 && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 max-h-80 overflow-y-auto border-2 border-foreground bg-background shadow-lg">
+                        {searchResults.map((item) => (
+                          <button
+                            key={`${item.tmdb_id}-${item.title}`}
+                            onClick={() => addSearchedTitle(item)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-accent/10 transition-colors border-b border-foreground/10 last:border-b-0"
+                          >
+                            {item.poster_path ? (
+                              <img src={item.poster_path} alt="" className="w-8 h-12 object-cover shrink-0" />
+                            ) : (
+                              <div className="w-8 h-12 bg-secondary flex items-center justify-center shrink-0">
+                                <Film className="w-3 h-3 text-muted-foreground/40" />
+                              </div>
+                            )}
+                            <span className="font-mono text-xs">
+                              {item.title} <span className="text-muted-foreground">({item.year})</span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <ManualRatingGrid
+                    titles={manualTitles}
+                    ratings={manualRatings}
+                    loading={loadingTitles}
+                    onRate={rateManual}
+                  />
+                </>
+              ) : (
+                <div className="p-8 border-2 border-dashed border-foreground/20 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Tus picks van a aparecer acá
+                </div>
+              )}
             </section>
           </div>
         )}

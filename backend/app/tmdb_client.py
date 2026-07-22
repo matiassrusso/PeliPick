@@ -533,6 +533,47 @@ def search_title(title: str) -> dict | None:
     return result.copy() if result else None
 
 
+def search_titles(query: str, limit: int = 8) -> list[dict]:
+    """Several movie matches for a free-text query, for the onboarding search
+    box (rate a film you've seen that isn't in the curated seed list). Minimal
+    shape — title/year/tmdb_id/poster — since the manual recommend flow
+    re-resolves genres/tags per title later anyway. Movies only; the seed list
+    is movies too."""
+    api_key = os.environ.get("TMDB_API_KEY")
+    if not api_key:
+        raise TmdbError("TMDB_API_KEY no configurada.")
+
+    query = query.strip()
+    if not query:
+        return []
+
+    params = {"api_key": api_key, "query": query, "language": "en-US", "include_adult": "false"}
+    data = _get_json(f"{SEARCH_URL}?{urllib.parse.urlencode(params)}")
+
+    out: list[dict] = []
+    for raw in data.get("results", []):
+        title = (raw.get("title") or "").strip()
+        date_value = raw.get("release_date") or ""
+        if not title or len(date_value) < 4:
+            continue
+        try:
+            year = int(date_value[:4])
+        except ValueError:
+            continue
+        out.append(
+            {
+                "tmdb_id": raw.get("id"),
+                "title": title,
+                "year": year,
+                "kind": "movie",
+                "poster_path": _image_url(raw.get("poster_path"), "w500"),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
 def fetch_taste_credits(tmdb_id: int, kind: str = "movie") -> dict:
     """Director + top-3 billed cast for one title, for the taste profile
     aggregation. Kept separate from fetch_credits (used by the detail modal)

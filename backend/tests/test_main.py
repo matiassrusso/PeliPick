@@ -3,7 +3,7 @@ import zipfile
 
 from fastapi.testclient import TestClient
 
-from backend.app import db, letterboxd_scrape
+from backend.app import db, letterboxd_scrape, onboarding_titles
 from backend.app.llm_client import LlmError
 from backend.app.main import TASTE_TAG_LOOKUP_CAP, _enrich_loved_ratings_with_genre_tags, app
 from backend.app.models import RatedItem
@@ -955,3 +955,129 @@ def test_taste_profile_endpoint_reuses_persisted_profile_without_recomputing(mon
     body = response.json()
     assert body["genre_breakdown"] == [{"genre": "Drama", "weight": 12.0}]
     assert body["matched_count"] == 3
+
+
+# ─── Onboarding without Letterboxd ──────────────────────────────────────────
+
+_MANUAL_RATINGS = [
+    {"title": t, "rating": 4.5}
+    for t in [
+        "The Godfather", "Jaws", "Alien", "The Shining", "Blade Runner",
+        "Die Hard", "Pulp Fiction", "The Matrix", "Inception", "Parasite",
+    ]
+]
+
+
+def test_onboarding_titles_returns_seeds_without_tmdb_key(monkeypatch) -> None:
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+    headers = _auth_headers("onbnokey")
+
+    response = client.get("/onboarding/titles", headers=headers)
+
+    assert response.status_code == 200
+    titles = response.json()["titles"]
+    assert len(titles) == len(onboarding_titles.ONBOARDING_TITLES)
+    # no TMDb key: degrade to title/year only, no posters
+    assert all(item["poster_path"] is None for item in titles)
+    assert titles[0]["title"] == onboarding_titles.ONBOARDING_TITLES[0]["title"]
+
+
+def test_onboarding_titles_resolves_posters_with_tmdb(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.search_title",
+        lambda title: {"tmdb_id": 42, "poster_path": "https://img/p.jpg"},
+    )
+    headers = _auth_headers("onbposter")
+
+    response = client.get("/onboarding/titles", headers=headers)
+
+    assert response.status_code == 200
+    titles = response.json()["titles"]
+    assert all(item["poster_path"] == "https://img/p.jpg" for item in titles)
+    assert all(item["tmdb_id"] == 42 for item in titles)
+
+
+def test_onboarding_titles_requires_auth() -> None:
+    assert client.get("/onboarding/titles").status_code == 401
+
+
+def test_onboarding_search_returns_matches(monkeypatch) -> None:
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    monkeypatch.setattr(
+        "backend.app.main.tmdb_client.search_titles",
+        lambda q, limit=8: [
+            {"tmdb_id": 1, "title": "Amelie", "year": 2001, "kind": "movie", "poster_path": "p.jpg"}
+        ],
+    )
+    headers = _auth_headers("onbsearch")
+
+    response = client.get("/onboarding/search", params={"q": "amelie"}, headers=headers)
+
+    assert response.status_code == 200
+    titles = response.json()["titles"]
+    assert len(titles) == 1
+    assert titles[0]["title"] == "Amelie"
+
+
+def test_onboarding_search_returns_empty_for_short_query() -> None:
+    headers = _auth_headers("onbsearchshort")
+
+    response = client.get("/onboarding/search", params={"q": "a"}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["titles"] == []
+
+
+def test_onboarding_search_returns_empty_without_tmdb_key(monkeypatch) -> None:
+    monkeypatch.delenv("TMDB_API_KEY", raising=False)
+    headers = _auth_headers("onbsearchnokey")
+
+    response = client.get("/onboarding/search", params={"q": "godfather"}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["titles"] == []
+
+
+def test_recommend_manual_returns_picks_for_enough_ratings() -> None:
+    headers = _auth_headers("manualok")
+
+    response = client.post("/recommend/manual", headers=headers, json={"ratings": _MANUAL_RATINGS})
+
+    assert response.status_code == 200
+    recommendations = response.json()["recommendations"]
+    assert recommendations
+    assert all(item["id"] is not None for item in recommendations)
+
+
+def test_recommend_manual_rejects_too_few_ratings() -> None:
+    headers = _auth_headers("manualfew")
+
+    response = client.post(
+        "/recommend/manual", headers=headers, json={"ratings": _MANUAL_RATINGS[:9]}
+    )
+
+    assert response.status_code == 400
+
+
+def test_recommend_manual_rejects_invalid_mode() -> None:
+    headers = _auth_headers("manualbadmode")
+
+    response = client.post(
+        "/recommend/manual",
+        headers=headers,
+        json={"ratings": _MANUAL_RATINGS, "mode": "not-a-mode"},
+    )
+
+    assert response.status_code == 400
+
+
+def test_recommend_manual_excludes_rated_titles_from_picks() -> None:
+    headers = _auth_headers("manualexcl")
+
+    response = client.post("/recommend/manual", headers=headers, json={"ratings": _MANUAL_RATINGS})
+
+    assert response.status_code == 200
+    rated = {item["title"] for item in _MANUAL_RATINGS}
+    returned = {item["title"] for item in response.json()["recommendations"]}
+    assert not (rated & returned)
