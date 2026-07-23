@@ -1,3 +1,5 @@
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { Toaster } from "sonner";
 import { Route, Switch } from "wouter";
 
@@ -50,6 +52,8 @@ export default function App() {
           </div>
           <Footer />
         </div>
+        <Analytics />
+        <SpeedInsights />
       </AuthProvider>
     </ErrorBoundary>
   );
