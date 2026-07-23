@@ -1,36 +1,33 @@
 # Butaca
 
-Motor de recomendaciones de pelis y series basado en el gusto real de una persona, no en promedios genéricos.
+*[Leer en español](README.es.md)*
 
-## Estado actual
+A movie/series recommendation engine built around your actual taste, not generic averages. Import your full [Letterboxd](https://letterboxd.com) export (or rate a handful of movies by hand if you don't use Letterboxd), and it recommends picks with an explained "why" per movie, scored against your real rating history.
 
-- `backend` con FastAPI: DB en SQLite, login real, catálogo de TMDb (con
-  fallback a mock), agente de IA con NVIDIA NIM (refina resumen y picks, con
-  fallback al heurístico), import del `.zip` completo del export de
-  Letterboxd (ratings, reviews, likes, rewatches, favoritos, watched),
-  feedback explícito por pick
-- `frontend` con React + Vite + Tailwind: tema "cinematic", páginas Home /
-  Login / Recommend (upload del zip + mood + resultados) / NotFound
+**Live:** [butaca.xyz](https://butaca.xyz)
 
-Todavía no hay scraping de Letterboxd por username (el usuario sube el zip
-a mano). Ver
-[mvp-status.md](docs/mvp-status.md) para el detalle.
+## Why
 
-## Estructura
+Most recommendation engines optimize for "people who liked X also liked Y" at a population level. Butaca instead builds a taste profile from a single user's actual ratings, reviews, likes, rewatches, and favorites, then scores candidates against that profile directly, with an AI agent that explains each pick in plain language instead of a black-box percentage.
 
-- [Producto y MVP](docs/product-mvp.md)
-- [Direcciones visuales](docs/design-directions.md)
-- [Arquitectura actual](docs/architecture.md)
-- [Import del zip de Letterboxd](docs/letterboxd-zip-format.md)
-- [Setup de TMDb](docs/tmdb-setup.md)
-- [Setup de NVIDIA NIM](docs/nvidia-setup.md)
-- [API actual](docs/api.md)
-- [Estado del MVP](docs/mvp-status.md)
-- [Build log](docs/build-log.md)
-- [API principal](backend/app/main.py)
-- [Frontend principal](frontend/src/App.tsx)
+## What it does
 
-## Cómo correrlo
+1. Sign up, then import your taste: upload your full Letterboxd `.zip` export, import by username (recent history via RSS), or skip Letterboxd entirely and rate a handful of movies by hand / search for titles outside the catalog
+2. Pick a mood — full profile, recently watched, or specific genres — and whether you want movies, series, or both
+3. The backend combines your ratings, reviews, likes, rewatches, and favorites into a taste profile, pulls real candidates from TMDb, and scores them
+4. An AI agent (NVIDIA NIM) refines the ranking and reasoning on top of a heuristic baseline, so you get results instantly and better explanations moments later
+5. Get up to 6 picks with poster, match %, and a specific reason tied to your own history — not a template
+6. Give feedback per pick (interested / not interested / already watched) to improve future scoring, or add it to your watchlist
+
+Other things it handles: real auth with password reset and email verification by mail, revisitable recommendation history, a "where to watch" lookup per pick, and account deletion.
+
+## Tech stack
+
+- **Backend:** FastAPI, SQLite (local) / PostgreSQL (production, Neon), TMDb API for the catalog, NVIDIA NIM for the AI agent, Resend for transactional email
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS
+- **Deploy:** Vercel (frontend), Render (backend)
+
+## Running it locally
 
 ### Backend
 
@@ -40,6 +37,8 @@ py -m pip install -r requirements.txt
 py -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
+Needs `TMDB_API_KEY` and `NVIDIA_API_KEY` (both have free tiers) in `backend/.env` — see [tmdb-setup.md](docs/tmdb-setup.md) and [nvidia-setup.md](docs/nvidia-setup.md). `RESEND_API_KEY` is optional; without it, password reset/verification tokens are only returned in the API response with `BUTACA_DEBUG=1`.
+
 ### Frontend
 
 ```powershell
@@ -48,25 +47,15 @@ npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1 --port 4173
 ```
 
-## Qué hace hoy
+## Docs
 
-1. te registrás o entrás con usuario/contraseña
-2. subís el `.zip` completo que exporta Letterboxd y elegís un mood
-3. el backend combina ratings, reviews, likes, rewatches, favoritos y todo
-   lo visto, resume tu gusto, trae candidatos de TMDb (o cae al catálogo
-   mock) y scorea
-4. te devuelve hasta 5 picks con póster, razón y % de match
-5. das feedback por pick (me interesa / no me interesa / ya la vi)
+- [Product & MVP scope](docs/product-mvp.md)
+- [Architecture](docs/architecture.md)
+- [Letterboxd zip import format](docs/letterboxd-zip-format.md)
+- [API reference](docs/api.md)
+- [MVP status / build log](docs/mvp-status.md)
+- [Backend entrypoint](backend/app/main.py) · [Frontend entrypoint](frontend/src/App.tsx)
 
-Nota:
+## Status
 
-- uso `8001` por default porque en esta máquina `8000` ya estaba ocupado por otro backend
-- para el catálogo real necesitás `TMDB_API_KEY` en `backend/.env` — ver [tmdb-setup.md](docs/tmdb-setup.md)
-- para el agente de IA necesitás `NVIDIA_API_KEY` (free tier) en `backend/.env` — ver [nvidia-setup.md](docs/nvidia-setup.md)
-- el zip tiene que traer `ratings.csv` o `reviews.csv` adentro; el resto de
-  los archivos son opcionales — ver [letterboxd-zip-format.md](docs/letterboxd-zip-format.md)
-
-## Próximo paso lógico
-
-- perfil de gusto visual e historial de sesiones
-- scraping o import automático desde el username de Letterboxd
+Active, deployed, backed by a real test suite (180+ backend tests). Solo project, built end to end (product scope, backend, frontend, deploy) as part of a data science / software portfolio.

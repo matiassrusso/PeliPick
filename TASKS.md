@@ -40,21 +40,17 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 > proyectos, no se borró nada). Ver Done de hoy (`domain-001`) para el
 > detalle completo.
 
-- [ ] 🔴 **Setear `NVIDIA_API_KEY` en Render** — **el agente de IA nunca corrió
-      en producción.** Al migrar de Gemini a NVIDIA NIM se cambió el nombre de
-      la variable en el código (`llm_client.py` lee `NVIDIA_API_KEY`) pero en
-      Render quedó la vieja `GEMINI_API_KEY`. Los dos call sites hacían
-      fallback mudo al heurístico, así que no se notó: todos los "why" de
-      producción vienen del heurístico, no del modelo. El logging ya está
-      arreglado (`c477d5c`); falta la key. La `GEMINI_API_KEY` vieja ya se
-      borró de Render.
-- [ ] 🔴 **Rotar credenciales** — el 2026-07-21 se pegó el export completo de
-      env vars de Render en un chat con un agente de IA. Rotar al menos:
-      password de Neon (`DATABASE_URL`), `RESEND_API_KEY`, `TMDB_API_KEY`.
+- [x] **Setear `NVIDIA_API_KEY` en Render** — hecho por Matías. Verificado
+      en vivo el 2026-07-23: cuenta de prueba descartable en butaca.xyz,
+      picks con `refine` real (razones generadas cruzando películas
+      específicas del perfil, no la plantilla heurística) — el agente de IA
+      corre en producción.
+- [x] **Rotar credenciales** — hecho por Matías (Neon, `RESEND_API_KEY`,
+      `TMDB_API_KEY`). Verificado indirectamente: TMDb y la DB (Neon)
+      responden bien en el smoke test del 2026-07-23.
 - [ ] **Borrar el usuario de prueba `test-resend-qa`** (creado hoy vía API
-      para probar el mail real, con el mail de Matías). No hay endpoint de
-      borrar cuenta todavía — sale con la Ola 4 (tarea I) o a mano por SQL
-      contra Neon.
+      para probar el mail real, con el mail de Matías). Ya hay endpoint de
+      borrar cuenta (Ola 4 tarea I) — usarlo o a mano por SQL contra Neon.
 - [ ] **Aprovechar el `tmdb:movieId` del RSS** (mejora, no bug) — el feed trae
       el id de TMDb ya resuelto por entrada, pero el flujo sigue matcheando
       por título como con el zip. Usarlo ahorraría requests a TMDb y evitaría
@@ -64,19 +60,19 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
       reciente** (~50 entradas del RSS, contra el historial completo del zip).
       Hoy los dos caminos se ofrecen sin distinción y el zip da un perfil
       bastante mejor. Decisión de producto, no técnica.
-- [ ] **Despausar el monitor de UptimeRobot** — está pausado a propósito;
-      solo tiene sentido reactivarlo una vez confirmado el fix de `/health`
-      en producción (si no, vuelve a alertar 405 cada 5 min).
+- [x] **Despausar el monitor de UptimeRobot** — activo, confirmado por
+      Matías el 2026-07-23.
 - [ ] **Activar auto-renew de `butaca.xyz`** en Namecheap antes de que venza
       (21 de julio de 2027) — hoy está apagado a propósito para no llevarse
       un cargo sorpresa, pero eso también significa que se pierde el dominio
       si nadie lo renueva a mano.
-- [ ] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
-      ~~H (onboarding sin Letterboxd)~~ ✅ (ver `onboarding-001` en Done),
-      ~~I (verificación de email + borrar cuenta)~~ ✅ (ver `account-i-001` en
-      Done), J (README — decidir si se reescribe en inglés o se actualiza en
-      español; hoy quedó actualizado solo el nombre). **Falta solo J para cerrar
-      la ola.**
+- [x] **Ola 4 del plan de implementación** (`docs/(C) plan-implementacion-codigo.md`):
+      H (onboarding sin Letterboxd), I (verificación de email + borrar cuenta),
+      J (README) — las tres cerradas. J se resolvió en bilingüe:
+      `README.md` en inglés (primario, portfolio internacional) +
+      `README.es.md` en español, cruzados entre sí, con link a producción
+      (`butaca.xyz`), pitch del producto y feature list actualizada. **Ola 4
+      cerrada.**
 - [ ] **Renombrar la carpeta del proyecto** (`03 Projects/PeliPick/` →
       `03 Projects/Butaca/`) y la lista de proyectos del `CLAUDE.md` raíz del
       vault (fuera de este repo) — pendiente, requiere permiso explícito
