@@ -15,7 +15,7 @@ If a session is drifting without moving hacia calidad de recomendación o clarid
 1. Definición corta del alcance (ver `docs/product-mvp.md`)
 2. Implementación en `backend` (FastAPI + SQLite) y/o `frontend` (React + Vite + Tailwind)
 3. Si hay varios agentes en paralelo: coordinación por `TASKS.md` (worktrees separados, marcar In Progress → Done, nunca mergear a `main` solo)
-4. Tests de backend en verde antes de cerrar (180 tests a la fecha)
+4. Tests de backend en verde antes de cerrar (207 tests a la fecha)
 5. Deployeado: frontend [butaca.xyz](https://butaca.xyz/) (Vercel), backend [api.butaca.xyz](https://api.butaca.xyz) (Render, free tier — cold start en la primera request)
 
 ## Key People
@@ -30,7 +30,7 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 - `00 System/` — scripts/config reusables de este proyecto (vacío por ahora)
 - `01 Skills/` — skills en markdown de este proyecto (vacío por ahora)
 - `02 Attachments/` — imágenes/screenshots (vacío por ahora)
-- `03 Iteration Logs/` — notas de qué mejorar entre iteraciones (vacío por ahora)
+- `03 Iteration Logs/` — notas de qué mejorar entre iteraciones (arranca con el feedback de amigos pre-lanzamiento del 2026-07-23)
 
 ## Rules & Conventions
 
@@ -43,39 +43,58 @@ Solo yo (Matías), con posible coordinación multi-agente (Claude, Codex) docume
 
 ## Current Status
 
-> **Last updated:** 2026-07-21 (commit + push de lo acumulado, dominio propio en producción)
+> **Last updated:** 2026-07-23, sesión 2 (feedback de amigos: 19 de 20 puntos resueltos)
 >
 > ### ⚠️ Leer primero al retomar
 >
-> **El proyecto se llama `Butaca`** (antes PeliPick) y ya tiene dominio propio
-> en vivo: frontend en [butaca.xyz](https://butaca.xyz/) (Vercel), backend en
+> **El proyecto se llama `Butaca`** (antes PeliPick), con dominio propio en
+> vivo: frontend en [butaca.xyz](https://butaca.xyz/) (Vercel), backend en
 > [api.butaca.xyz](https://api.butaca.xyz) (Render). Las URLs `pelipick.*`
-> siguen funcionando en paralelo (mismos proyectos, no se borraron) pero ya no
-> son la identidad real. La carpeta local del proyecto y el `CLAUDE.md` raíz
-> del vault todavía dicen PeliPick — pendiente, requiere permiso porque toca
-> archivos fuera de este repo (ver `Pending` en `TASKS.md`).
+> siguen funcionando en paralelo pero ya no son la identidad real. Todo lo
+> operativo grande ya está cerrado: dominio, Resend activo, UptimeRobot
+> activo, `NVIDIA_API_KEY` en producción (agente de IA corriendo de verdad),
+> Ola 4 completa (onboarding sin Letterboxd, verificación de email + borrar
+> cuenta, README bilingüe), y el **feedback de amigos pre-lanzamiento
+> trabajado 19/20** (ver abajo). 207 tests de backend en verde.
 >
-> Todo lo de la sesión del 2026-07-20 (Olas 1-3, rebrand, fix de `/health`) ya
-> está commiteado y pusheado a `main` (`c698ad3`). 180 tests en verde.
+> **Pendientes reales** (detalle en `Pending` de `TASKS.md`):
+> - Punto 7 del feedback (onboarding manual estilo swipe) — decidir recién
+>   cuando los amigos prueben el wizard nuevo.
+> - Borrar el usuario de prueba `test-resend-qa` en producción.
+> - Activar auto-renew de `butaca.xyz` antes del 21-07-2027.
+> - Borrar el proyecto viejo de Neon (São Paulo) cuando el nuevo lleve unos
+>   días estable.
+> - Renombrar la carpeta local del proyecto y la lista del `CLAUDE.md` raíz
+>   del vault (fuera de este repo, requiere permiso).
+> - Mejoras chicas del import por username: aprovechar `tmdb:movieId` del
+>   RSS y avisar en el frontend que esa vía trae solo historial reciente.
+> - La TMDb key del `backend/.env` **local** está vieja (401): corriendo
+>   local las recs degradan al catálogo mock. Producción tiene la key buena.
 >
-> Lo hecho el 2026-07-21 (detalle completo en `TASKS.md` y `docs/build-log.md`):
-> - Commit + push de todo lo acumulado.
-> - GitHub renombrado a `matiassrusso/Butaca`, proyecto de Vercel renombrado a
->   `butaca` — ninguno de los dos cambió la URL pública por sí solo
->   (`butaca.vercel.app` ya era de otro proyecto ajeno).
-> - **Comprado `butaca.xyz`** y configurado de punta a punta: DNS en Namecheap
->   (A `@`→Vercel, CNAME `www`→Vercel, CNAME `api`→Render), custom domain
->   verificado en Render, `BUTACA_ALLOWED_ORIGINS`/`VITE_API_BASE_URL`/
->   `DEFAULT_RESET_URL` actualizados y redeployados.
-> - Render **no se pudo renombrar de verdad** (la URL `.onrender.com` es fija
->   desde la creación del servicio, recrearlo perdería `DATABASE_URL` y las
->   demás env vars `sync: false`) — resuelto con el custom domain en vez de
->   forzar el rename.
-> - **Pendiente:** activar Resend (ya desbloqueado por el dominio), despausar
->   UptimeRobot, Ola 4 (onboarding sin Letterboxd, verificación de email +
->   borrar cuenta, README).
+> **2026-07-23 (sesión 2) — feedback de amigos, 19/20 resueltos en 6 commits
+> (`7512cf3`..`58f0715`):** el feedback juntado en sesión 1 (Gaspi, Pedro,
+> Simón, Gerardo + notas propias, 20 puntos en
+> `03 Iteration Logs/(C) 2026-07-23 feedback-amigos-pre-lanzamiento.md`) se
+> redujo a 4 problemas de fondo y se atacó casi todo:
+> - **Lote rápido** (1,4,5,6,12,13,19): CTA del home abre registro directo
+>   (`/login?register=1`), contraste del badge del hero, "Sync con
+>   Letterboxd" solo sin sesión, tooltip del toggle de tema, navbar sin
+>   "Home" y en español, instrucción de cómo exportar el zip en el dropzone.
+> - **`/recommend` rediseñado como wizard de 3 pasos** (3,8,9,10,11,17):
+>   Tu historial → Qué ver → Formato, cada decisión explicada en contexto,
+>   paso 2 bloqueado sin fuente válida, modos con descripción, recap +
+>   `<details>` "¿cómo se calculan tus picks?" antes de generar, aviso
+>   honesto del límite del modo manual, stepper clickeable hacia atrás.
+> - **Grilla de resultados** (2): `lg:grid-cols-3`, 6 picks en 2 filas.
+> - **Navbar estilo YouTube** (14,15): pill terracota "Recomendar" + avatar
+>   con dropdown (Perfil, Archivo, tema, Salir); `useTheme` extraído.
+> - **Perfil real** (16,20): `GET /profile/summary` nuevo (cuenta +
+>   actividad + still de la mejor puntuada como avatar), header de
+>   `/profile` con identidad y 4 stats; el mapa de afinidad pasó a sección.
+> Todo verificado en el preview local y deployado. Detalle en
+> `docs/build-log.md` (entrada 2026-07-23 sesión 2).
 >
-> **Status:** Activo, MVP deployeado, rediseño visual completo ("Hybrid critic notebook", ver `DESIGN.md` y `docs/mvp-status.md`) — frontend [pelipick.vercel.app](https://pelipick.vercel.app/), backend [pelipick-backend.onrender.com](https://pelipick-backend.onrender.com). 160 tests de backend. Cerrados los 3 pendientes de MVP que quedaban: reporte de filas descartadas del CSV base (`discarded_rows` en `/recommend/zip`, aunque el cartel al usuario se sacó el 2026-07-20, ver abajo), observabilidad mínima (`logging.basicConfig` + log INFO por recomendación completada), y mail real de recuperación de contraseña vía Resend (`backend/app/mailer.py`, campo `email` en `users`, flujo completo en el frontend con `ResetPassword.tsx`) — falta que Matías cree la cuenta de Resend y setee `RESEND_API_KEY` para que funcione en producción. Migrado el agente de IA de Gemini a NVIDIA NIM (`nvidia/nemotron-3-super-120b-a12b`, `chat_template_kwargs.enable_thinking=false`): Gemini tenía un modo "thinking" que no se podía desactivar (~20s por call) y forzaba una cadena de 4 modelos de fallback por cuota diaria; NVIDIA da un solo endpoint compatible con OpenAI, +100 modelos gratis con una key, y este modelo (familia Nemotron 3, más nueva que la Llama-Nemotron original) permite apagar el razonamiento vía un parámetro real de la API sin perder calidad de instruction-following.
+> **Status (histórico, pre-dominio — los tests y URLs de acá abajo están superados por la cabecera de arriba):** Activo, MVP deployeado, rediseño visual completo ("Hybrid critic notebook", ver `DESIGN.md` y `docs/mvp-status.md`) — frontend [pelipick.vercel.app](https://pelipick.vercel.app/), backend [pelipick-backend.onrender.com](https://pelipick-backend.onrender.com). 160 tests de backend. Cerrados los 3 pendientes de MVP que quedaban: reporte de filas descartadas del CSV base (`discarded_rows` en `/recommend/zip`, aunque el cartel al usuario se sacó el 2026-07-20, ver abajo), observabilidad mínima (`logging.basicConfig` + log INFO por recomendación completada), y mail real de recuperación de contraseña vía Resend (`backend/app/mailer.py`, campo `email` en `users`, flujo completo en el frontend con `ResetPassword.tsx`) — falta que Matías cree la cuenta de Resend y setee `RESEND_API_KEY` para que funcione en producción. Migrado el agente de IA de Gemini a NVIDIA NIM (`nvidia/nemotron-3-super-120b-a12b`, `chat_template_kwargs.enable_thinking=false`): Gemini tenía un modo "thinking" que no se podía desactivar (~20s por call) y forzaba una cadena de 4 modelos de fallback por cuota diaria; NVIDIA da un solo endpoint compatible con OpenAI, +100 modelos gratis con una key, y este modelo (familia Nemotron 3, más nueva que la Llama-Nemotron original) permite apagar el razonamiento vía un parámetro real de la API sin perder calidad de instruction-following.
 >
 > **2026-07-18 (sesión 2):** comparación con el prototipo visual de Lovable → se integró "current picks" en el home (última sesión real del usuario) y "catalog statistics" reales en el footer (`GET /catalog/stats`, no los números inventados del mock). Se arregló el mapa de afinidad, roto en producción por `datetime()` de SQLite corriendo contra Postgres (Neon) — sumado un exception handler global para que futuros 500 no manejados no se disfracen de "Failed to fetch". Fix de performance grande a pedido de Matías: pool de conexiones a Postgres + schema/migraciones corriendo una sola vez por proceso en vez de por request (login de ~8s a ~2.85s en producción, medido con curl), y paralelización con `ThreadPoolExecutor` de las llamadas a TMDb en el perfil de gusto (un import de 45 títulos nuevos de ~100s+ a ~11.6s). Detalle completo en `docs/build-log.md` (entrada 2026-07-18).
 >
