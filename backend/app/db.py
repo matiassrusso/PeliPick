@@ -1,11 +1,23 @@
+import hashlib
 import json
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "butaca.db"
+
+# Las sesiones expiran: un token robado deja de servir pasado esto.
+SESSION_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 días
+
+
+def _hash_token(token: str) -> str:
+    # Igual que los tokens de reset/verificación (auth.hash_token — duplicado
+    # acá porque auth importa db y sería circular): en la DB solo viven
+    # hasheados, así una filtración de la DB no regala sesiones activas.
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 SCHEMA_SQLITE = """
 CREATE TABLE IF NOT EXISTS users (
@@ -28,7 +40,8 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS login_attempts (
@@ -129,7 +142,8 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id),
-    created_at TEXT NOT NULL DEFAULT ({_PG_NOW})
+    created_at TEXT NOT NULL DEFAULT ({_PG_NOW}),
+    expires_at INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS login_attempts (
@@ -275,6 +289,13 @@ def _run_migrations(conn) -> None:
         conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
     if not _has_column(conn, "users", "email_verified"):
         conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0")
+    if not _has_column(conn, "sessions", "expires_at"):
+        # Las filas preexistentes quedan con expires_at=0 → expiradas. A la vez
+        # se pasó a guardar el token hasheado, así que esas filas viejas (token
+        # crudo) no matchearían igual: se borran acá y los usuarios se loguean
+        # de nuevo una única vez.
+        conn.execute("ALTER TABLE sessions ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0")
+        conn.execute("DELETE FROM sessions")
 
 
 def _last_insert_id(conn, cursor):
@@ -371,9 +392,13 @@ def get_user_by_username(username: str) -> sqlite3.Row | None:
 
 
 def create_session(token: str, user_id: int) -> None:
+    now = int(time.time())
     with get_connection() as conn:
+        # limpieza oportunista: las sesiones vencidas no sirven para nada
+        conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
         conn.execute(
-            "INSERT INTO sessions (token, user_id) VALUES (?, ?)", (token, user_id)
+            "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (_hash_token(token), user_id, now + SESSION_TTL_SECONDS),
         )
 
 
@@ -383,15 +408,15 @@ def get_user_by_token(token: str) -> sqlite3.Row | None:
             """
             SELECT users.* FROM sessions
             JOIN users ON users.id = sessions.user_id
-            WHERE sessions.token = ?
+            WHERE sessions.token = ? AND sessions.expires_at > ?
             """,
-            (token,),
+            (_hash_token(token), int(time.time())),
         ).fetchone()
 
 
 def delete_session(token: str) -> None:
     with get_connection() as conn:
-        conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        conn.execute("DELETE FROM sessions WHERE token = ?", (_hash_token(token),))
 
 
 def delete_sessions_for_user(user_id: int) -> None:

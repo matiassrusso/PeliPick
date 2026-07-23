@@ -163,6 +163,33 @@ def test_auth_me_rejects_missing_or_invalid_token() -> None:
     )
 
 
+def test_expired_session_is_rejected() -> None:
+    token = _register("expiredsession")["token"]
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code == 200
+
+    # vencer la sesión a mano (el token vive hasheado en la DB)
+    with db.get_connection() as conn:
+        conn.execute(
+            "UPDATE sessions SET expires_at = 1 WHERE token = ?",
+            (db._hash_token(token),),
+        )
+
+    assert client.get("/auth/me", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+
+def test_session_tokens_are_stored_hashed() -> None:
+    token = _register("hashedsession")["token"]
+
+    with db.get_connection() as conn:
+        raw_match = conn.execute("SELECT 1 FROM sessions WHERE token = ?", (token,)).fetchone()
+        hashed_match = conn.execute(
+            "SELECT 1 FROM sessions WHERE token = ?", (db._hash_token(token),)
+        ).fetchone()
+
+    assert raw_match is None  # el token crudo nunca toca la DB
+    assert hashed_match is not None
+
+
 def test_forgot_password_returns_token_and_reset_invalidates_old_sessions(monkeypatch) -> None:
     # BUTACA_DEBUG exposes the reset token in the response so the flow can
     # be exercised end-to-end without a real email provider configured.
