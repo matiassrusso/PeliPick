@@ -57,7 +57,7 @@ def test_refine_reorders_and_overrides_why(monkeypatch) -> None:
             ],
         }
 
-    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call_nvidia)
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", fake_call_nvidia)
 
     ratings = [RatedItem(title="Old Movie", rating=4.5, review="genial")]
     result = llm_client.refine_recommendations(ratings, "funny", HEURISTIC)
@@ -76,7 +76,7 @@ def test_refine_ignores_titles_outside_the_candidate_list(monkeypatch) -> None:
     def fake_call_nvidia(prompt: str, api_key: str) -> dict:
         return {"taste_summary": "x", "picks": [{"title": "Made Up Movie", "why": "no existe"}]}
 
-    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call_nvidia)
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", fake_call_nvidia)
 
     with pytest.raises(llm_client.LlmError):
         llm_client.refine_recommendations([], "funny", HEURISTIC)
@@ -116,6 +116,85 @@ def test_call_nvidia_requests_json_object_format(monkeypatch) -> None:
     llm_client._call_nvidia("prompt", "fake-key")
 
     assert captured["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_call_nvidia_omits_thinking_flag_for_non_nemotron_models(monkeypatch) -> None:
+    # el fallback (llama) rechaza chat_template_kwargs con 400; solo Nemotron
+    # lo acepta
+    captured = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'{"choices": [{"message": {"content": "{\\"ok\\": true}"}}]}'
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data)
+        return _Resp()
+
+    monkeypatch.setattr(llm_client.urllib.request, "urlopen", fake_urlopen)
+
+    llm_client._call_nvidia("prompt", "fake-key", "meta/llama-3.1-70b-instruct")
+    assert "chat_template_kwargs" not in captured["body"]
+
+    llm_client._call_nvidia("prompt", "fake-key", llm_client.MODEL)
+    assert captured["body"]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_fallback_retries_same_model_before_switching(monkeypatch) -> None:
+    monkeypatch.setattr(llm_client.time, "sleep", lambda _s: None)
+    calls: list[str] = []
+
+    def fake_call(prompt, api_key, model):
+        calls.append(model)
+        # el primer intento del modelo primario falla, el segundo (reintento) anda
+        if len(calls) == 1:
+            raise llm_client.LlmError("timeout transitorio")
+        return {"picks": [{"title": "X", "why": "ok"}]}
+
+    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call)
+
+    result = llm_client._call_nvidia_with_fallback("prompt", "fake-key")
+
+    assert result == {"picks": [{"title": "X", "why": "ok"}]}
+    # reintentó el primario, no saltó al fallback
+    assert calls == [llm_client.MODEL, llm_client.MODEL]
+
+
+def test_fallback_switches_model_when_primary_exhausts_retries(monkeypatch) -> None:
+    monkeypatch.setattr(llm_client.time, "sleep", lambda _s: None)
+    calls: list[str] = []
+
+    def fake_call(prompt, api_key, model):
+        calls.append(model)
+        if model == llm_client.MODEL:
+            raise llm_client.LlmError("modelo primario caído")
+        return {"picks": [{"title": "X", "why": "del fallback"}]}
+
+    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call)
+
+    result = llm_client._call_nvidia_with_fallback("prompt", "fake-key")
+
+    assert result["picks"][0]["why"] == "del fallback"
+    # agotó los 2 intentos del primario y recién ahí pasó al fallback
+    assert calls == [llm_client.MODEL, llm_client.MODEL, llm_client.NVIDIA_MODELS[1]]
+
+
+def test_fallback_raises_when_all_models_fail(monkeypatch) -> None:
+    monkeypatch.setattr(llm_client.time, "sleep", lambda _s: None)
+
+    def always_fail(prompt, api_key, model):
+        raise llm_client.LlmError(f"{model} caído")
+
+    monkeypatch.setattr(llm_client, "_call_nvidia", always_fail)
+
+    with pytest.raises(llm_client.LlmError):
+        llm_client._call_nvidia_with_fallback("prompt", "fake-key")
 
 
 def test_extract_json_parses_plain_json() -> None:
@@ -176,7 +255,7 @@ def _fake_nvidia(call_count: list[int]):
 def test_refine_recommendations_caches_same_mood_and_candidates(monkeypatch) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
     calls: list[int] = []
-    monkeypatch.setattr(llm_client, "_call_nvidia", _fake_nvidia(calls))
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", _fake_nvidia(calls))
 
     first = llm_client.refine_recommendations([], "funny", HEURISTIC)
     second = llm_client.refine_recommendations([], "funny", HEURISTIC)
@@ -189,7 +268,7 @@ def test_refine_recommendations_caches_same_mood_and_candidates(monkeypatch) -> 
 def test_refine_recommendations_cache_misses_on_different_mood(monkeypatch) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
     calls: list[int] = []
-    monkeypatch.setattr(llm_client, "_call_nvidia", _fake_nvidia(calls))
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", _fake_nvidia(calls))
 
     llm_client.refine_recommendations([], "funny", HEURISTIC)
     llm_client.refine_recommendations([], "romance", HEURISTIC)
@@ -200,7 +279,7 @@ def test_refine_recommendations_cache_misses_on_different_mood(monkeypatch) -> N
 def test_refine_recommendations_cache_misses_on_different_candidates(monkeypatch) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
     calls: list[int] = []
-    monkeypatch.setattr(llm_client, "_call_nvidia", _fake_nvidia(calls))
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", _fake_nvidia(calls))
 
     other_heuristic = RecommendResponse(
         taste_summary="otro resumen",
@@ -221,7 +300,7 @@ def test_refine_recommendations_cache_misses_on_different_candidates(monkeypatch
 def test_refine_recommendations_cache_expires_after_ttl(monkeypatch) -> None:
     monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
     calls: list[int] = []
-    monkeypatch.setattr(llm_client, "_call_nvidia", _fake_nvidia(calls))
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", _fake_nvidia(calls))
 
     fake_now = [1000.0]
     monkeypatch.setattr(llm_client, "_now_monotonic", lambda: fake_now[0])
@@ -252,7 +331,7 @@ def test_refine_matches_titles_with_year_suffix(monkeypatch) -> None:
             "picks": [{"title": "Fake Thriller (2020)", "why": "por el tono oscuro"}],
         }
 
-    monkeypatch.setattr(llm_client, "_call_nvidia", fake_call_nvidia)
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", fake_call_nvidia)
 
     result = llm_client.refine_recommendations([], "dark", HEURISTIC)
 
@@ -272,7 +351,7 @@ def test_refine_does_not_cache_a_response_that_failed_validation(monkeypatch) ->
             return {"taste_summary": "x", "picks": [{"title": "Peli Inventada", "why": "no"}]}
         return {"taste_summary": "ok", "picks": [{"title": "Fake Thriller", "why": "sí"}]}
 
-    monkeypatch.setattr(llm_client, "_call_nvidia", failing_then_ok)
+    monkeypatch.setattr(llm_client, "_call_nvidia_with_fallback", failing_then_ok)
 
     with pytest.raises(llm_client.LlmError):
         llm_client.refine_recommendations([], "dark", HEURISTIC)

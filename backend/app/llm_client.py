@@ -24,6 +24,13 @@ CHAT_COMPLETIONS_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 # chain-of-thought entirely — that hidden reasoning is what made Gemini's
 # "thinking" variant take ~20s per call before.
 MODEL = "nvidia/nemotron-3-super-120b-a12b"
+# Fallback chain: se intenta cada modelo en orden, con un reintento por modelo
+# ante fallas transitorias (timeout / 5xx). Ambos son NVIDIA NIM con la misma
+# key — cubre un modelo puntual rate-limiteado o que devuelva basura, NO una
+# caída total del endpoint (mismo host); para eso haría falta otro proveedor.
+NVIDIA_MODELS = [MODEL, "meta/llama-3.1-70b-instruct"]
+ATTEMPTS_PER_MODEL = 2
+RETRY_BACKOFF_SECONDS = 1.0
 REQUEST_TIMEOUT = 20
 
 # Same OrderedDict TTL+LRU idiom as tmdb_client's _DISCOVER_CACHE — avoids
@@ -135,20 +142,22 @@ def _extract_json(content: str) -> dict:
     return json.loads(text)
 
 
-def _call_nvidia(prompt: str, api_key: str) -> dict:
-    body = json.dumps(
-        {
-            "model": MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.4,
-            "chat_template_kwargs": {"enable_thinking": False},
-            # sin esto el modelo devuelve JSON casi-válido de forma intermitente
-            # (comillas internas sin escapar, trailing commas) y ~1 de cada 3
-            # refines caía al heurístico; con prompts largos reales, siempre.
-            # json_object garantiza sintaxis parseable (medido: 8/8 vs 4/6).
-            "response_format": {"type": "json_object"},
-        }
-    ).encode("utf-8")
+def _call_nvidia(prompt: str, api_key: str, model: str = MODEL) -> dict:
+    payload_body = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.4,
+        # sin esto el modelo devuelve JSON casi-válido de forma intermitente
+        # (comillas internas sin escapar, trailing commas) y ~1 de cada 3
+        # refines caía al heurístico; con prompts largos reales, siempre.
+        # json_object garantiza sintaxis parseable (medido: 8/8 vs 4/6).
+        "response_format": {"type": "json_object"},
+    }
+    # enable_thinking solo aplica a la familia Nemotron; otros modelos NIM
+    # (el fallback llama) rechazan el parámetro con 400
+    if model.startswith("nvidia/nemotron"):
+        payload_body["chat_template_kwargs"] = {"enable_thinking": False}
+    body = json.dumps(payload_body).encode("utf-8")
     request = urllib.request.Request(
         CHAT_COMPLETIONS_URL,
         data=body,
@@ -159,13 +168,38 @@ def _call_nvidia(prompt: str, api_key: str) -> dict:
         with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
             payload = json.loads(response.read())
     except (URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise LlmError(f"No pude consultar NVIDIA ({MODEL}): {exc}") from exc
+        raise LlmError(f"No pude consultar NVIDIA ({model}): {exc}") from exc
 
     try:
         text = payload["choices"][0]["message"]["content"]
         return _extract_json(text)
     except (KeyError, IndexError, json.JSONDecodeError) as exc:
-        raise LlmError(f"Respuesta de NVIDIA ({MODEL}) con formato inesperado: {exc}") from exc
+        raise LlmError(f"Respuesta de NVIDIA ({model}) con formato inesperado: {exc}") from exc
+
+
+def _call_nvidia_with_fallback(prompt: str, api_key: str) -> dict:
+    """Prueba cada modelo de NVIDIA_MODELS en orden, con ATTEMPTS_PER_MODEL
+    intentos por modelo (reintento ante fallas transitorias). Recién si todos
+    fallan propaga el LlmError, que el llamador convierte en fallback al
+    heurístico."""
+    last_error: LlmError | None = None
+    for model in NVIDIA_MODELS:
+        for attempt in range(ATTEMPTS_PER_MODEL):
+            try:
+                return _call_nvidia(prompt, api_key, model)
+            except LlmError as exc:
+                last_error = exc
+                logger.warning(
+                    "NVIDIA %s falló (intento %d/%d): %s",
+                    model,
+                    attempt + 1,
+                    ATTEMPTS_PER_MODEL,
+                    exc,
+                )
+                if attempt + 1 < ATTEMPTS_PER_MODEL:
+                    time.sleep(RETRY_BACKOFF_SECONDS)
+    assert last_error is not None  # NVIDIA_MODELS nunca está vacío
+    raise last_error
 
 
 def _now_monotonic() -> float:
@@ -231,7 +265,7 @@ def refine_recommendations(
     result = _get_cached_refine(cache_key)
     cache_hit = result is not None
     if result is None:
-        result = _call_nvidia(_build_prompt(ratings, mood, heuristic), api_key)
+        result = _call_nvidia_with_fallback(_build_prompt(ratings, mood, heuristic), api_key)
 
     by_title = {_title_key(rec.title): rec for rec in heuristic.recommendations}
     reordered = []

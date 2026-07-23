@@ -161,6 +161,32 @@ end-to-end 4/4 con razones reales citando títulos del historial ("Como en
 Prisoners, explora secretos familiares traumáticos..."). 1 test de regresión
 (el payload manda `response_format`). **209 tests.**
 
+### Reintento + fallback de modelo para el refine (a pedido de Matías)
+
+Sobre el fix anterior, red de resiliencia para el LLM. `_call_nvidia_with_fallback`
+recorre `NVIDIA_MODELS = [nemotron-3-super, meta/llama-3.1-70b-instruct]`, con
+`ATTEMPTS_PER_MODEL = 2` (reintento con `RETRY_BACKOFF_SECONDS = 1` ante fallas
+transitorias) por modelo; si el primario agota sus intentos, pasa al llama de
+respaldo; recién si todos fallan propaga `LlmError` → heurístico. Ambos son
+NVIDIA NIM con la misma key.
+
+Alcance honesto (lo hablé con Matías antes de construir): esto cubre un modelo
+puntual rate-limiteado o que devuelva basura, y fallas transitorias de red —
+**no** una caída total del endpoint de NVIDIA ni un rate limit de la cuenta
+(misma key/host en los dos modelos); para eso haría falta otro proveedor
+(Groq/Together), que se dejó afuera por especulativo hasta que NVIDIA falle de
+verdad. El fix de hoy (`response_format`) ya resolvió el bug real; esto es
+robustez a futuro.
+
+Detalles: `_call_nvidia(prompt, api_key, model)` toma el modelo como parámetro
+y omite `chat_template_kwargs.enable_thinking` para modelos no-Nemotron (el
+llama lo rechaza con 400). El fallback candidato se eligió midiendo contra la
+API real: `meta/llama-3.1-70b-instruct` dio 5/5 con `response_format` y el
+prompt largo (`qwen2.5-7b` da 404, `llama-3.3-70b` tuvo timeouts). Verificado
+end-to-end forzando el primario a fallar: el llama entrega el refine con razón
+real. 4 tests nuevos (reintento antes de cambiar de modelo, salto al fallback
+al agotar, error si todos fallan, omisión del flag de thinking). **213 tests.**
+
 ## 2026-07-23 (Ola 4 cierre, pulido pre-lanzamiento a amigos, seguridad de sesiones)
 
 Sesión enfocada en cerrar el MVP para mostrarlo a amigos y eventualmente
