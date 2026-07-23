@@ -40,14 +40,18 @@ pará y arreglalo antes de seguir, no lo dejes pasar.
 > proyectos, no se borró nada). Ver Done de hoy (`domain-001`) para el
 > detalle completo.
 
-- [ ] **⚠️ Empezar acá al retomar: feedback de amigos sin trabajar (20
-      puntos)** — Ola 4 ya cerrada, sitio ya mostrado a amigos, se juntó
-      feedback real (Gaspi, Pedro, Simón, Gerardo) más notas propias.
-      Todavía sin priorizar ni atacado, a propósito. Detalle completo,
-      agrupado por rápidos/medianos/grandes, en
-      [`03 Iteration Logs/(C) 2026-07-23 feedback-amigos-pre-lanzamiento.md`](<03 Iteration Logs/(C) 2026-07-23 feedback-amigos-pre-lanzamiento.md>).
-      Resumen de la sesión completa en `docs/build-log.md` (entrada
-      2026-07-23).
+- [x] **Feedback de amigos: 19 de 20 puntos resueltos (2026-07-23, sesión
+      2)** — lote rápido (1,4,5,6,12,13,19), wizard multi-step en
+      `/recommend` (3,8,9,10,11 + aviso del 17), grilla a 3 columnas (2),
+      navbar estilo YouTube (14,15), perfil real con avatar de película
+      (16,20). 5 commits (`7512cf3`..`1f08904`), 207 tests, todo deployado.
+      Detalle punto por punto (tachados con fecha) en
+      [`03 Iteration Logs/(C) 2026-07-23 feedback-amigos-pre-lanzamiento.md`](<03 Iteration Logs/(C) 2026-07-23 feedback-amigos-pre-lanzamiento.md>)
+      y en `docs/build-log.md` (entrada 2026-07-23 sesión 2).
+- [ ] **Único punto de feedback abierto: 7 (onboarding manual estilo
+      swipe/Tinder)** — a propósito: validar primero si el wizard nuevo ya
+      resolvió la confusión antes de invertir en un rediseño de
+      interacción. Decidir cuando los amigos vuelvan a probar.
 
 - [x] **Setear `NVIDIA_API_KEY` en Render** — hecho por Matías. Verificado
       en vivo el 2026-07-23: cuenta de prueba descartable en butaca.xyz,
