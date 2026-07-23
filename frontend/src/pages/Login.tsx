@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 
 import { PageTransition } from "@/components/PageTransition";
 import { API_BASE_URL, useAuth } from "@/hooks/useAuth";
+import { PRIMARY_QUOTE } from "@/lib/quotes";
 
 // El backend corre en el free tier de Render, que se duerme tras inactividad:
 // la primera request puede tardar ~30-60s en despertar el server. Sin este
@@ -20,10 +21,22 @@ export default function Login() {
   const [slowHint, setSlowHint] = useState(false);
   const [error, setError] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; email?: string; password?: string }>({});
   const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function validate(): boolean {
+    const errs: typeof fieldErrors = {};
+    if (username.trim().length < 3) errs.username = "Mínimo 3 caracteres.";
+    if (mode === "register" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
+      errs.email = "Ingresá un email válido.";
+    if (mode !== "forgot" && password.length < 8) errs.password = "Mínimo 8 caracteres.";
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!validate()) return;
     setLoading(true);
     setError("");
     setSlowHint(false);
@@ -67,11 +80,11 @@ export default function Login() {
               <span className="text-accent italic font-serif normal-case tracking-normal">función</span>.
             </h1>
             <p className="font-serif italic text-2xl leading-snug opacity-80 max-w-md">
-              "Cinema is a matter of what's in the frame and what's out."
+              "{PRIMARY_QUOTE.text}"
             </p>
           </div>
           <div className="font-mono text-[10px] uppercase tracking-widest opacity-40">
-            — Martin Scorsese
+            — {PRIMARY_QUOTE.author}
           </div>
         </div>
 
@@ -100,7 +113,7 @@ export default function Login() {
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-8">
+            <form onSubmit={handleSubmit} noValidate className="w-full max-w-sm space-y-8">
               <div>
                 <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
                   {mode === "register" ? "[Registro nuevo]" : mode === "forgot" ? "[Recuperación]" : "[Volvés]"}
@@ -122,11 +135,20 @@ export default function Login() {
                   </span>
                   <input
                     value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    minLength={3}
-                    required
-                    className="mt-2 w-full bg-transparent border-b-2 border-foreground py-3 font-mono placeholder:text-muted-foreground focus:outline-none focus:border-accent"
+                    onChange={(event) => {
+                      setUsername(event.target.value);
+                      if (fieldErrors.username) setFieldErrors((e) => ({ ...e, username: undefined }));
+                    }}
+                    aria-invalid={!!fieldErrors.username}
+                    className={`mt-2 w-full bg-transparent border-b-2 py-3 font-mono placeholder:text-muted-foreground focus:outline-none focus:border-accent ${
+                      fieldErrors.username ? "border-destructive" : "border-foreground"
+                    }`}
                   />
+                  {fieldErrors.username && (
+                    <span className="mt-2 block font-mono text-[10px] uppercase tracking-widest text-destructive">
+                      {fieldErrors.username}
+                    </span>
+                  )}
                 </label>
 
                 {mode === "register" && (
@@ -137,10 +159,20 @@ export default function Login() {
                     <input
                       type="email"
                       value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      required
-                      className="mt-2 w-full bg-transparent border-b-2 border-foreground py-3 font-mono placeholder:text-muted-foreground focus:outline-none focus:border-accent"
+                      onChange={(event) => {
+                        setEmail(event.target.value);
+                        if (fieldErrors.email) setFieldErrors((e) => ({ ...e, email: undefined }));
+                      }}
+                      aria-invalid={!!fieldErrors.email}
+                      className={`mt-2 w-full bg-transparent border-b-2 py-3 font-mono placeholder:text-muted-foreground focus:outline-none focus:border-accent ${
+                        fieldErrors.email ? "border-destructive" : "border-foreground"
+                      }`}
                     />
+                    {fieldErrors.email && (
+                      <span className="mt-2 block font-mono text-[10px] uppercase tracking-widest text-destructive">
+                        {fieldErrors.email}
+                      </span>
+                    )}
                   </label>
                 )}
 
@@ -152,11 +184,20 @@ export default function Login() {
                     <input
                       type="password"
                       value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      minLength={8}
-                      required
-                      className="mt-2 w-full bg-transparent border-b-2 border-foreground py-3 font-mono focus:outline-none focus:border-accent"
+                      onChange={(event) => {
+                        setPassword(event.target.value);
+                        if (fieldErrors.password) setFieldErrors((e) => ({ ...e, password: undefined }));
+                      }}
+                      aria-invalid={!!fieldErrors.password}
+                      className={`mt-2 w-full bg-transparent border-b-2 py-3 font-mono focus:outline-none focus:border-accent ${
+                        fieldErrors.password ? "border-destructive" : "border-foreground"
+                      }`}
                     />
+                    {fieldErrors.password && (
+                      <span className="mt-2 block font-mono text-[10px] uppercase tracking-widest text-destructive">
+                        {fieldErrors.password}
+                      </span>
+                    )}
                   </label>
                 )}
               </div>

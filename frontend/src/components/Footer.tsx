@@ -2,6 +2,7 @@ import { Github, Linkedin } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { API_BASE_URL } from "@/hooks/useAuth";
+import { SECONDARY_QUOTE } from "@/lib/quotes";
 
 type CatalogStats = { movies: number; series: number; genres: number };
 
@@ -86,10 +87,10 @@ export function Footer() {
 
         <div className="text-right space-y-3">
           <div className="font-serif italic text-lg opacity-80 max-w-sm">
-            "Cinema is a matter of what's in the frame and what's out."
+            "{SECONDARY_QUOTE.text}"
           </div>
           <div className="font-mono text-[10px] uppercase tracking-widest opacity-40">
-            — Martin Scorsese
+            — {SECONDARY_QUOTE.author}
           </div>
           <p className="font-mono text-[10px] uppercase tracking-widest opacity-50">
             Datos de películas por{" "}
