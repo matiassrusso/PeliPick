@@ -72,6 +72,21 @@ entran en 2 filas de 3 con posters de ~600px. Verificado con
 `getComputedStyle` en el preview (3 columnas computadas a 1280px). En
 mobile/tablet no cambia nada (1 y 2 columnas como antes).
 
+### Navbar estilo YouTube (puntos 14 y 15)
+
+Logueado, el navbar pasa de 3 links parejos + toggle + Salir a: logo +
+**"Recomendar" como pill terracota** (la acción central de la app, estilo
+"+ Crear" de YouTube) + **avatar cuadrado con la inicial del usuario** que
+abre un dropdown con lo secundario (username, Perfil, Archivo, modo
+oscuro/claro, Salir). Cierra con click afuera, Escape o al navegar.
+Deslogueado queda igual (toggle + Entrar). Para el item de tema del
+dropdown se extrajo la lógica de `ThemeToggle` a un hook `useTheme`
+compartido (el botón suelto sigue existiendo para el navbar deslogueado).
+Verificado en el preview: dropdown abre/cierra, el toggle cambia el tema y
+lo persiste, navegar desde el menú cierra y va a la ruta. El avatar con
+stills de películas (punto 16) queda para cuando exista el perfil real
+(punto 20).
+
 ## 2026-07-23 (Ola 4 cierre, pulido pre-lanzamiento a amigos, seguridad de sesiones)
 
 Sesión enfocada en cerrar el MVP para mostrarlo a amigos y eventualmente

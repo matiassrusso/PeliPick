@@ -84,12 +84,19 @@
     "Profile"/"Sign in") en un sitio que es todo en español —
     confirmado, están hardcodeados así en `Navbar.tsx`.~~
     **Resuelto 2026-07-23:** "Recomendar"/"Archivo"/"Perfil"/"Entrar".
-14. "Recommend" debería destacar más en el navbar — es la función central
-    de la app y hoy tiene el mismo peso visual que los otros tres links.
-15. **(cambio grande)** Navbar estilo YouTube: "Recommend" como botón
+14. ~~"Recommend" debería destacar más en el navbar — es la función central
+    de la app y hoy tiene el mismo peso visual que los otros tres links.~~
+    **Resuelto 2026-07-23:** "Recomendar" es un pill terracota destacado,
+    único link de primer nivel.
+15. ~~**(cambio grande)** Navbar estilo YouTube: "Recommend" como botón
     pill destacado (como el "+ Crear" de YouTube) + avatar de perfil que
     abre un dropdown con lo secundario (dark mode, Profile, Archive)
-    adentro. Resolvería 12, 13 y 14 de una sola vez.
+    adentro. Resolvería 12, 13 y 14 de una sola vez.~~ **Resuelto
+    2026-07-23:** navbar logueado = logo + pill Recomendar + avatar
+    cuadrado con inicial que abre dropdown (Perfil, Archivo, modo
+    oscuro/claro, Salir), con cierre por click afuera/Escape/navegación.
+    El avatar con stills de películas (16) queda para cuando exista el
+    perfil real (20).
 16. Avatares random generados con fotos/stills de películas en vez de un
     círculo con inicial — hoy no existe ningún concepto de avatar en el
     sitio.
@@ -143,6 +150,5 @@ Sin priorizar todavía. A ojo, agrupando:
   las pelis que puntúes en esta lista, así que algún pick puede ser una
   que ya viste — el .zip evita eso".
 - **Estado 2026-07-23 (sesión 2):** resueltos 1, 2, 3, 4, 5, 6, 8, 9, 10,
-  11, 12, 13, 19 + aviso del 17. Quedan: 7 (swipe onboarding), 14/15
-  (navbar destacando Recomendar / estilo YouTube), 16 (avatares), 20
-  (perfil real).
+  11, 12, 13, 14, 15, 19 + aviso del 17. Quedan: 7 (swipe onboarding), 16
+  (avatares), 20 (perfil real).

@@ -9,7 +9,9 @@ function getInitial(): "light" | "dark" {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
-export function ThemeToggle() {
+// lógica compartida entre el botón suelto (navbar deslogueado) y el item del
+// dropdown de usuario (navbar logueado)
+export function useTheme() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [mounted, setMounted] = useState(false);
 
@@ -26,6 +28,12 @@ export function ThemeToggle() {
     document.documentElement.classList.toggle("dark", next === "dark");
     window.localStorage.setItem(STORAGE_KEY, next);
   }
+
+  return { theme, toggle, mounted };
+}
+
+export function ThemeToggle() {
+  const { theme, toggle, mounted } = useTheme();
 
   return (
     <button
